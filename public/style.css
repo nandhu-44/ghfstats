@@ -114,6 +114,7 @@ footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
 .notice { margin: 14px 0; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
 .notice.warn { border-color: var(--org); }
 .notice.bad { border-color: var(--bad); color: var(--bad); }
+.notice.ok { border-color: var(--good); }
 .notice[hidden] { display: none; }
 
 .chart-card { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }

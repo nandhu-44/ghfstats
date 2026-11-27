@@ -52,9 +52,11 @@ ban automated or bulk following, so ghfstats keeps it small and deliberate:
 - Each account is capped at 100 unfollows an hour and 300 a day, and 20 follows an hour and 50 a
   day (`FOLLOW_LIMITS` in `lib/config.mjs`).
 
-This needs the App's **Followers: Read and write** permission. GitHub only grants a newly added
-permission when the person approves the App again, so the dashboard offers **Re-authorize with
-GitHub** when it's missing.
+This needs two things on GitHub's side. The App asks for **Followers: Read and write**, and each
+person **installs GHF Stats on their own account** once. Signing in alone isn't enough: GitHub refuses
+follows from the App until it's installed, even when the permission was approved. Sign-in checks this
+and the dashboard shows an **Install on GitHub** step when it's missing. The install asks for no
+access to repositories.
 
 ## Self-hosting
 
@@ -66,6 +68,10 @@ The site is static files in `public/` plus serverless functions in `api/`, with 
    - Callback URL: `https://<your-site>/api/auth/callback`
    - Keep "Expire user authorization tokens" on, and untick the webhook's "Active"
    - Account permissions → **Followers: Read and write** (only for unfollow and follow back)
+   - Where can this GitHub App be installed: **Any account**, so other people can install it
+   - Setup URL: `https://<your-site>/dashboard?installed=1`, with **Redirect on update** ticked,
+     so people come back to the dashboard after installing
+   - Leave "Request user authorization (OAuth) during installation" off
    - Generate a client secret
 3. **Add a database:** in the Vercel project, Storage → Create Database → Neon, connected to the
    project. That sets `DATABASE_URL`. Any Postgres works.
@@ -77,6 +83,7 @@ The site is static files in `public/` plus serverless functions in `api/`, with 
    | `GITHUB_CLIENT_SECRET` | The App's client secret |
    | `AUTH_SECRET` | 32+ random characters (`openssl rand -base64 48`) |
    | `CRON_SECRET` | Any random string, for the daily snapshot job |
+   | `GITHUB_APP_SLUG` | The App's name in its public link, `github.com/apps/<slug>`; powers the Install button |
 
 The daily job runs at 02:30 UTC. Changing `AUTH_SECRET` signs everyone out.
 

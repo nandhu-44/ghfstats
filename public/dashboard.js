@@ -313,6 +313,19 @@
     data.events.unshift({ kind: action === "follow" ? "you_followed" : "you_unfollowed", login: a.login, id: a.id, type: a.type, at: new Date().toISOString() });
   }
 
+  /** The one-time step that lets ghfstats follow and unfollow: installing the GitHub App on your account. */
+  function showInstallStep(url) {
+    const parts = [el("strong", null, "Install GHF Stats to turn on unfollow and follow back. "),
+      "GitHub only lets ghfstats change who you follow once the app is installed on your account. It asks for no access to your repositories. "];
+    if (url) {
+      parts.push(el("a", { class: "button small", href: url }, "Install on GitHub"));
+      parts.push(" Then come back here.");
+    } else {
+      parts.push("On GitHub, open the GHF Stats app page, choose Install, pick your account, then come back here.");
+    }
+    showNotice(el("span", null, ...parts), "warn");
+  }
+
   async function reauthorize() {
     const r = await call("/api/auth/reauthorize", { method: "POST" });
     location.href = (r.ok && r.body.next) || "/api/auth/login";
@@ -362,7 +375,9 @@
         selected.delete(a.id);
         $("runErrors").append(el("li", null, errors[errors.length - 1]));
       } else {
-        if (r.body.needsPermission) {
+        if (r.body.needsInstall) {
+          showInstallStep(r.body.installUrl || data.installUrl);
+        } else if (r.body.needsPermission) {
           const btn = el("button", { type: "button", class: "button small" }, "Re-authorize with GitHub");
           btn.addEventListener("click", reauthorize);
           showNotice(el("span", null, (r.body.error || "GitHub refused the change.") +
@@ -443,12 +458,14 @@
       return load();
     }
     view = compute(data);
+    const params = new URLSearchParams(location.search);
     if (data.user.needsReauth) {
       showNotice(el("span", null, (data.user.lastError || "Your GitHub sign-in expired.") + " ",
         el("a", { href: "/api/auth/login" }, "Sign in again")), "warn");
-    } else if (new URLSearchParams(location.search).get("followers") === "missing") {
-      showNotice(el("span", null, "GitHub didn't give this sign-in the Followers (read and write) permission, so unfollow and follow back won't work. " +
-        "Open GitHub Settings → Applications → Authorized GitHub Apps → GHF Stats and check whether it lists Followers. If it doesn't, revoke it and sign in again, approving Followers on GitHub's screen."), "warn");
+    } else if (params.get("install") === "needed") {
+      showInstallStep(data.installUrl);
+    } else if (params.get("setup_action") === "install" || params.get("installed")) {
+      showNotice("GHF Stats is installed. Unfollow and follow back are ready.", "ok");
     } else if (data.user.lastError) {
       showNotice(`Last snapshot problem: ${data.user.lastError}`, "warn");
     } else showNotice(null);

@@ -14,6 +14,7 @@ export function createFakeGitHub({ clientId, clientSecret, accessTtl = 28800 }) 
     refreshCount: 0, revoked: [], accessTtl,
     details: new Map(), // id -> {followers, following, createdAt}
     followCalls: [], followMode: "ok", // "ok" | "no-permission" | "rate-limited"
+    installed: true, // whether the App is installed on the user's account
   };
 
   const issue = () => {
@@ -101,6 +102,10 @@ export function createFakeGitHub({ clientId, clientSecret, accessTtl = 28800 }) 
       const list = state[m[2]];
       const per = Number(url.searchParams.get("per_page")) || 30, page = Number(url.searchParams.get("page")) || 1;
       return send(res, 200, list.slice((page - 1) * per, page * per));
+    }
+    if (p === "/user/installations" && req.method === "GET") {
+      const installations = state.installed ? [{ id: 77, app_slug: "ghf-stats-test", account: { login: state.me.login } }] : [];
+      return send(res, 200, { total_count: installations.length, installations });
     }
     const f = /^\/user\/following\/([^/]+)$/.exec(p);
     if (f && (req.method === "PUT" || req.method === "DELETE")) {

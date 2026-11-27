@@ -3,8 +3,10 @@
 // - Unfollow: only accounts they follow. Follow: only follow-back of accounts that follow them,
 //   so ghfstats can't be used to mass-follow strangers (GitHub bans automated or high-volume following).
 // - Server-side limits per hour and per day, and at least a second between actions.
-// - Needs the GitHub App's "Followers" account permission (read and write).
-import { FOLLOW_LIMITS, followGapMs, githubApi, signInConfigured } from "../lib/config.mjs";
+// - Needs the GitHub App's "Followers" account permission (read and write), and the App installed
+//   on the user's account: GitHub refuses follows from a user token when the App isn't installed.
+import { FOLLOW_LIMITS, appInstallUrl, followGapMs, githubApi, signInConfigured } from "../lib/config.mjs";
+import { appInstallation } from "../lib/github.mjs";
 import { fail, handle, json, sameOrigin } from "../lib/http.mjs";
 import { currentUser } from "../lib/session.mjs";
 import { ReauthError, accessTokenFor } from "../lib/snapshot.mjs";
@@ -89,6 +91,11 @@ export const POST = handle(async (request) => {
     return fail(429, "GitHub asked ghfstats to slow down. Wait a minute, then try again.", { retryAfter: retryAfter || 60, github });
   }
   if (res.status === 403 && /not accessible by integration|permission/i.test(message)) {
+    const app = await appInstallation(token);
+    if (app.installed === false) {
+      return fail(403, "GHF Stats isn't installed on your GitHub account yet, and GitHub needs that before it can follow or unfollow for you.",
+        { needsInstall: true, installUrl: appInstallUrl(), github });
+    }
     return fail(403, `GitHub refused: this sign-in doesn't have the Followers (read and write) permission.`, { needsPermission: true, github });
   }
   if (res.status === 401) return fail(401, "Your GitHub sign-in expired. Sign in again.", { reauth: true, github });

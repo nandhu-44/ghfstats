@@ -339,11 +339,26 @@ test("follow and unfollow: only picked people in your lists, follow-back only, l
   assert.strictEqual(fake.state.revoked.length, revokedBefore + 1);
   assert.strictEqual((await c.getJson("/api/me")).status, 401, "session ended");
   assert.ok(await memory.getUser(u.id), "data kept");
-  fake.state.followMode = "no-permission";
+  fake.state.installed = false;
   const back = await c.signIn();
-  assert.strictEqual(back.headers.get("location"), "/dashboard?followers=missing", "sign-in checks the Followers permission");
-  fake.state.followMode = "ok";
+  assert.strictEqual(back.headers.get("location"), "/dashboard?install=needed", "sign-in checks the App is installed");
   me = (await c.getJson("/api/me")).body;
   assert.ok(me.following.some((f) => f[0] === "alice"), "history is still there after signing in again");
-  assert.ok(fake.state.following.some((a) => a.login === "alice"), "the permission check changes nothing");
+
+  // Without the App installed, GitHub refuses follows; ghfstats turns that into the install step.
+  process.env.GITHUB_APP_SLUG = "ghf-stats-test";
+  process.env.GHFS_FOLLOW_GAP_MS = "0";
+  fake.state.followMode = "no-permission";
+  r = await post({ action: "unfollow", login: "bob" });
+  assert.strictEqual(r.status, 403);
+  assert.strictEqual(r.body.needsInstall, true);
+  assert.match(r.body.installUrl, /\/apps\/ghf-stats-test\/installations\/new$/);
+  assert.match((await c.getJson("/api/me")).body.installUrl, /\/apps\/ghf-stats-test\/installations\/new$/);
+  // Installed but still refused: the permission message and re-authorize.
+  fake.state.installed = true;
+  r = await post({ action: "unfollow", login: "bob" });
+  assert.strictEqual(r.body.needsPermission, true);
+  fake.state.followMode = "ok";
+  delete process.env.GITHUB_APP_SLUG;
+  delete process.env.GHFS_FOLLOW_GAP_MS;
 });

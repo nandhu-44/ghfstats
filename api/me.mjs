@@ -1,5 +1,5 @@
 // GET /api/me: everything the dashboard shows for the signed-in user.
-import { signInConfigured } from "../lib/config.mjs";
+import { appInstallUrl, signInConfigured } from "../lib/config.mjs";
 import { fail, handle, json } from "../lib/http.mjs";
 import { currentUser } from "../lib/session.mjs";
 import { getStore } from "../lib/store.mjs";
@@ -24,5 +24,6 @@ export const GET = handle(async (request) => {
     following: edges.following.map(pack),
     events: events.map((e) => ({ kind: e.kind, login: e.login, id: e.id, type: e.type, at: e.at })),
     daily,
+    installUrl: appInstallUrl(),
   });
 });

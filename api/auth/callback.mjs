@@ -1,7 +1,7 @@
 // GET /api/auth/callback: GitHub sends the user back here after they approve sign-in.
 import { githubClient, signInConfigured } from "../../lib/config.mjs";
 import { decrypt, safeEqual } from "../../lib/crypto.mjs";
-import { api, canChangeFollowing, exchangeCode } from "../../lib/github.mjs";
+import { api, appInstallation, exchangeCode } from "../../lib/github.mjs";
 import { handle, parseCookies, redirect } from "../../lib/http.mjs";
 import { OAUTH_COOKIE, clearCookie, startSession } from "../../lib/session.mjs";
 import { sealTokens, takeSnapshot } from "../../lib/snapshot.mjs";
@@ -44,9 +44,10 @@ export const GET = handle(async (request) => {
     try { const r = await takeSnapshot(store, user); first = `taken (${r.daily.followers} followers, ${r.daily.following} following)`; }
     catch (e) { first = `failed: ${e.message}`; }
   }
-  // Whether this sign-in carries the Followers write permission (no tokens logged).
-  const followersWrite = await canChangeFollowing(tokens.accessToken, me.login);
-  console.log("signin stored", JSON.stringify({ store: store.kind || "memory", ...(store.where || {}), firstSnapshot: first, followersWrite }));
+  // Following and unfollowing need the App installed on the account; the dashboard offers it if not.
+  const app = await appInstallation(tokens.accessToken);
+  console.log("signin stored", JSON.stringify({ store: store.kind || "memory", ...(store.where || {}), firstSnapshot: first,
+    appInstalled: app.installed, appSlug: app.slug }));
   const session = await startSession(request, store, Number(me.id));
-  return redirect(followersWrite === false ? "/dashboard?followers=missing" : "/dashboard", [clear, session]);
+  return redirect(app.installed === false ? "/dashboard?install=needed" : "/dashboard", [clear, session]);
 });
