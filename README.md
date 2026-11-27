@@ -11,12 +11,13 @@
 
 ## Features
 
+Without signing in, a **quick look** at any account: follower and following counts and a few
+accounts from each list. Sign in with GitHub for the rest:
+
 - **Followers, following and mutuals** for any username, with account type (User, Organization, Bot)
 - **Not following back** and **you don't follow back** lists
 - **Unfollowed you**: who stopped following you, and roughly when
 - **Change history** of every follow and unfollow, both ways
-
-Sign in with GitHub and you also get:
 
 - **Daily snapshots** taken for you, so unfollows are caught without opening the site
 - **History in the cloud**, the same on every device
@@ -65,8 +66,9 @@ ban automated or bulk following, so ghfstats keeps it small and deliberate:
 
 This needs two things on GitHub's side. The App asks for **Followers: Read and write**, and each
 person **installs GHF Stats on their own account** once. Signing in alone isn't enough: GitHub refuses
-follows from the App until it's installed, even when the permission was approved. Sign-in checks this
-and the dashboard shows an **Install on GitHub** step when it's missing. The install asks for no
+follows from the App until it's installed, even when the permission was approved. Sign-in checks this:
+a first sign-in goes straight to GitHub's install page, and after that the dashboard shows an
+**Install on GitHub** step while it's missing. The install asks for no
 access to repositories.
 
 ## Self-hosting

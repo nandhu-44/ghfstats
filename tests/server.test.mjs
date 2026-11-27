@@ -388,3 +388,21 @@ test("rate limits: sign-in per IP, and the limiter counts by hashed key", async 
   // A store that can't count never blocks.
   assert.strictEqual(await rateLimit({ async hit() { throw new Error("down"); } }, "insights", 1), null);
 });
+
+test("first sign-in without the App installed goes straight to GitHub's install page", async () => {
+  enableSignIn();
+  process.env.GITHUB_APP_SLUG = "ghf-stats-test";
+  const prevMe = fake.state.me;
+  fake.state.me = { id: 777001, login: "newcomer", name: "New Comer", avatar_url: "" };
+  fake.state.installed = false;
+  try {
+    const c = client();
+    const first = await c.signIn();
+    assert.match(first.headers.get("location"), /\/apps\/ghf-stats-test\/installations\/new$/);
+    assert.strictEqual((await c.getJson("/api/me")).status, 200, "signed in before leaving for GitHub");
+    const again = await client().signIn();
+    assert.strictEqual(again.headers.get("location"), "/dashboard?install=needed", "later sign-ins aren't bounced");
+  } finally {
+    fake.state.me = prevMe; fake.state.installed = true; delete process.env.GITHUB_APP_SLUG;
+  }
+});

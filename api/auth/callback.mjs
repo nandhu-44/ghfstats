@@ -1,5 +1,5 @@
 // GET /api/auth/callback: GitHub sends the user back here after they approve sign-in.
-import { githubClient, signInConfigured } from "../../lib/config.mjs";
+import { appInstallUrl, githubClient, signInConfigured } from "../../lib/config.mjs";
 import { decrypt, safeEqual } from "../../lib/crypto.mjs";
 import { api, appInstallation, exchangeCode } from "../../lib/github.mjs";
 import { handle, parseCookies, redirect } from "../../lib/http.mjs";
@@ -41,15 +41,19 @@ export const GET = handle(async (request) => {
   });
   // Take the first snapshot here so the account has data stored as soon as sign-in finishes.
   // The dashboard retries if this fails, so a failure doesn't block the sign-in.
+  const firstSignIn = !user.lastSnapshotAt;
   let first = "existing";
-  if (!user.lastSnapshotAt) {
-    try { const r = await takeSnapshot(store, user); first = `taken (${r.daily.followers} followers, ${r.daily.following} following)`; }
+  if (firstSignIn) {
+    try { await takeSnapshot(store, user); first = "taken"; }
     catch (e) { first = `failed: ${e.message}`; }
   }
-  // Following and unfollowing need the App installed on the account; the dashboard offers it if not.
+  // Following and unfollowing need the App installed on the account. On a first sign-in without it,
+  // go straight to GitHub's install page (its Setup URL brings people back to the dashboard).
+  // After that, the dashboard offers the install step instead, so nobody is bounced every time.
   const app = await appInstallation(tokens.accessToken);
-  console.log("signin stored", JSON.stringify({ store: store.kind || "memory", ...(store.where || {}), firstSnapshot: first,
-    appInstalled: app.installed, appSlug: app.slug }));
+  console.log("signin", JSON.stringify({ firstSnapshot: first, appInstalled: app.installed }));
   const session = await startSession(request, store, Number(me.id));
-  return redirect(app.installed === false ? "/dashboard?install=needed" : "/dashboard", [clear, session]);
+  const installUrl = appInstallUrl();
+  if (app.installed === false) return redirect(firstSignIn && installUrl ? installUrl : "/dashboard?install=needed", [clear, session]);
+  return redirect("/dashboard", [clear, session]);
 });
