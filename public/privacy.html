@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>What's stored · ghfstats</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1><a href="/" style="color:inherit;text-decoration:none">ghfstats</a></h1>
+  <h2>Without signing in</h2>
+  <p>Checking a username runs in your browser. Follower lists and snapshots are saved in your browser's local storage only.
+    An optional token stays in your browser and is sent only to GitHub.</p>
+
+  <h2>When you sign in with GitHub</h2>
+  <p>ghfstats asks GitHub for no extra permissions. It can only read what is already public on your profile.</p>
+  <p>To track your account every day, it stores:</p>
+  <ul>
+    <li>your GitHub user id, username, display name and avatar link</li>
+    <li>your GitHub sign-in tokens, encrypted, so the daily snapshot can run while you're away</li>
+    <li>your current followers and following (their public usernames, ids and account types)</li>
+    <li>follow and unfollow events with dates, and a daily count of followers, following and mutuals</li>
+  </ul>
+  <p>Only your own account is tracked. Looking up someone else's username is never saved on the server.
+    Follower insights are fetched when you ask for them and are not stored.</p>
+  <p>Follows on GitHub are public, so there is no hidden follower data for ghfstats to show.
+    Nothing is sold, shared or used for advertising.</p>
+
+  <h2>Stopping</h2>
+  <p>Signing out ends the session in that browser; daily tracking continues. <strong>Delete my data</strong> on your dashboard
+    removes everything above and revokes ghfstats' access on GitHub. You can also revoke access any time from
+    GitHub's settings under Applications.</p>
+</main>
+</body>
+</html>

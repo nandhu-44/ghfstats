@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Your dashboard · ghfstats</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header class="topbar">
+    <h1><a class="home" href="/">ghfstats</a></h1>
+    <div class="toolbar" id="toolbar" hidden>
+      <button type="button" id="syncBtn" class="secondary">Sync now</button>
+      <button type="button" id="logoutBtn" class="secondary">Sign out</button>
+    </div>
+  </header>
+
+  <p id="status" role="status" aria-live="polite">Loading…</p>
+  <div id="notice" class="notice" hidden></div>
+
+  <section id="signedOut" hidden>
+    <p>Sign in with GitHub to see your dashboard.</p>
+    <a class="button gh" href="/api/auth/login">Continue with GitHub</a>
+  </section>
+
+  <section id="results" hidden>
+    <div class="profile" id="profile"></div>
+    <div class="stats" id="stats"></div>
+    <div id="changes" class="changes"></div>
+
+    <div class="chart-card">
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>Followers</span>
+        <span><i style="background:var(--good)"></i>Following</span>
+        <span><i style="background:var(--bot)"></i>Mutuals</span>
+      </div>
+      <div id="chart"></div>
+    </div>
+
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="filters">
+      <input id="filter" placeholder="Filter by username" spellcheck="false">
+      <div class="chips" id="typeChips"></div>
+    </div>
+    <div class="grid" id="list"></div>
+    <p class="empty" id="emptyList" hidden>Nobody here.</p>
+
+    <h2>Follower insights</h2>
+    <p class="hint">Looks up each follower's own numbers on GitHub (up to 3,000 followers). Nothing from this is saved.</p>
+    <button type="button" id="insightsBtn" class="secondary">Load insights</button>
+    <p id="insightsStatus" class="hint"></p>
+    <div id="insights" class="insights"></div>
+
+    <h2>Timeline</h2>
+    <p class="hint">Every follow and unfollow found by the daily snapshot or a manual sync.</p>
+    <div class="table-wrap"><table id="history"></table></div>
+
+    <section class="danger-zone">
+      <h2>Your data</h2>
+      <p class="hint">ghfstats stores your follower lists, the changes it finds and daily counts so it can track you.
+        <a href="/privacy">What's stored</a>. Signing out keeps daily tracking on; deleting stops it.</p>
+      <button type="button" id="deleteBtn" class="danger">Delete my data and stop tracking</button>
+    </section>
+  </section>
+
+  <footer>Source on <a href="https://github.com/nandhu-44/ghfstats">GitHub</a>.</footer>
+</main>
+<script src="dashboard.js"></script>
+</body>
+</html>

@@ -3,3 +3,5 @@ data/
 report.html
 report.json
 node_modules/
+.vercel/
+.env*

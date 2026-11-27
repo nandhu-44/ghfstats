@@ -1,0 +1,237 @@
+// End-to-end tests for sign-in, snapshots, insights, cron and deletion, against a fake GitHub
+// and the in-memory store, through the same local server as `npm run dev`.
+// Run: node --test tests/
+import assert from "node:assert";
+import { after, before, test } from "node:test";
+import { createFakeGitHub } from "./fake-github.mjs";
+
+const CLIENT_ID = "Iv1.testclient", CLIENT_SECRET = "test-secret";
+const fake = createFakeGitHub({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, accessTtl: 60 }); // short-lived: forces refresh
+const acct = (id, login, type = "User") => ({ id, login, type });
+
+let base, server, diff, cryptoLib, insights, storeLib, memory;
+
+before(async () => {
+  const gh = await fake.listen();
+  Object.assign(process.env, { GHFS_GITHUB_API: gh, GHFS_GITHUB_WEB: gh, GHFS_SYNC_COOLDOWN_SECONDS: "0" });
+  delete process.env.DATABASE_URL; delete process.env.POSTGRES_URL;
+  ({ startDevServer: server } = await import("../scripts/dev.mjs"));
+  server = await server(0);
+  base = `http://localhost:${server.address().port}`;
+  diff = await import("../lib/diff.mjs");
+  cryptoLib = await import("../lib/crypto.mjs");
+  insights = await import("../lib/insights.mjs");
+  storeLib = await import("../lib/store.mjs");
+  memory = (await import("../lib/store-memory.mjs")).createMemoryStore();
+  storeLib.setStoreForTests(memory);
+});
+
+after(async () => { server.close(); await fake.close(); });
+
+function enableSignIn() {
+  Object.assign(process.env, {
+    GITHUB_CLIENT_ID: CLIENT_ID, GITHUB_CLIENT_SECRET: CLIENT_SECRET,
+    AUTH_SECRET: "x".repeat(40), GHFS_MEMORY_STORE: "1", CRON_SECRET: "cron-secret-value",
+  });
+}
+
+/** Minimal cookie jar around fetch with manual redirects. */
+function client() {
+  const jar = new Map();
+  const absorb = (res) => {
+    for (const c of res.headers.getSetCookie()) {
+      const [pair, ...attrs] = c.split(";");
+      const i = pair.indexOf("=");
+      const name = pair.slice(0, i).trim(), value = pair.slice(i + 1).trim();
+      if (attrs.some((a) => /max-age=0/i.test(a.trim())) || !value) jar.delete(name);
+      else jar.set(name, value);
+    }
+  };
+  const go = async (url, opts = {}) => {
+    const headers = { ...(opts.headers || {}) };
+    if (jar.size) headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+    const res = await fetch(url.startsWith("http") ? url : base + url, { redirect: "manual", ...opts, headers });
+    absorb(res);
+    return res;
+  };
+  const getJson = async (url, opts) => { const r = await go(url, opts); return { status: r.status, body: await r.json() }; };
+  async function signIn() {
+    const start = await go("/api/auth/login");
+    assert.strictEqual(start.status, 302);
+    const authorize = start.headers.get("location");
+    assert.ok(authorize.startsWith(process.env.GHFS_GITHUB_WEB + "/login/oauth/authorize"));
+    const back = await fetch(authorize, { redirect: "manual" });
+    const cb = await go(back.headers.get("location"));
+    return cb;
+  }
+  return { jar, go, getJson, signIn };
+}
+
+// ------------------------------------------------------------------ unit
+
+test("diff finds follows and unfollows by id, so renames aren't changes", () => {
+  const prev = { followers: [acct(1, "a"), acct(2, "b"), acct(3, "c")], following: [acct(1, "a"), acct(9, "x")] };
+  const ev = diff.buildEvents(prev, [acct(1, "a"), acct(3, "c-renamed"), acct(4, "d")], [acct(1, "a"), acct(5, "e")]);
+  assert.deepStrictEqual(ev.map((e) => `${e.kind}:${e.login}`).sort(),
+    ["followed_you:d", "unfollowed_you:b", "you_followed:e", "you_unfollowed:x"]);
+  assert.strictEqual(diff.countMutuals([acct(1, "a"), acct(2, "b")], [acct(2, "b"), acct(3, "c")]), 1);
+  assert.deepStrictEqual(diff.dedupe([acct(1, "a"), acct(1, "a"), acct(2, "b")]).map((a) => a.id), [1, 2]);
+});
+
+test("tokens are encrypted and cookies signed; tampering is rejected", () => {
+  enableSignIn();
+  const sealed = cryptoLib.encrypt("ghu_secret");
+  assert.ok(!sealed.includes("ghu_secret"));
+  assert.strictEqual(cryptoLib.decrypt(sealed), "ghu_secret");
+  const parts = sealed.split(".");
+  parts[2] = parts[2].slice(0, -2) + (parts[2].endsWith("A") ? "BB" : "AA");
+  assert.throws(() => cryptoLib.decrypt(parts.join(".")));
+  const s = cryptoLib.sign("abc");
+  assert.strictEqual(cryptoLib.unsign(s), "abc");
+  assert.strictEqual(cryptoLib.unsign(s.replace("abc", "abd")), null);
+  assert.strictEqual(cryptoLib.unsign("garbage"), null);
+});
+
+test("insight summaries", () => {
+  const now = Date.parse("2026-11-27T00:00:00Z");
+  const list = [
+    { login: "star", followers: 5000, following: 10, createdAt: "2012-01-01T00:00:00Z" },
+    { login: "f4f", followers: 20, following: 3000, createdAt: "2020-01-01T00:00:00Z" },
+    { login: "fresh", followers: 0, following: 2, createdAt: "2026-11-01T00:00:00Z" },
+    { login: "mid", followers: 50, following: 50, createdAt: "2019-01-01T00:00:00Z" },
+  ];
+  const s = insights.summarize(list, now);
+  assert.deepStrictEqual(s.notable.map((a) => a.login), ["star", "mid", "f4f"]);
+  assert.deepStrictEqual(s.followForFollow.map((a) => a.login), ["f4f"]);
+  assert.deepStrictEqual(s.newAccounts.map((a) => a.login), ["fresh"]);
+  assert.strictEqual(s.medianFollowers, 20);
+  assert.strictEqual(s.combinedReach, 5070);
+});
+
+// ------------------------------------------------------------ end to end
+
+test("static page is served and sign-in stays hidden until configured", async () => {
+  for (const k of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "AUTH_SECRET", "GHFS_MEMORY_STORE"]) delete process.env[k];
+  const home = await fetch(base + "/");
+  assert.strictEqual(home.status, 200);
+  const html = await home.text();
+  assert.match(html, /id="lookup"/);
+  assert.match(html, /account\.js/);
+  const c = client();
+  assert.deepStrictEqual((await c.getJson("/api/config")).body, { signIn: false, signedIn: false });
+  const login = await c.go("/api/auth/login");
+  assert.strictEqual(login.headers.get("location"), "/?signin=unavailable");
+  assert.strictEqual((await c.getJson("/api/me")).status, 503);
+  assert.strictEqual((await fetch(base + "/dashboard")).status, 200);
+});
+
+test("full flow: sign in, baseline, changes, refresh, insights, cron, re-auth, sign out, delete", async () => {
+  enableSignIn();
+  fake.state.followers = [acct(1, "alice"), acct(2, "bob"), acct(3, "carol"), acct(4, "acme-bot", "Bot")];
+  fake.state.following = [acct(2, "bob"), acct(7, "dave"), acct(8, "acme", "Organization")];
+  fake.state.details.set(1, { followers: 9000, following: 3, createdAt: "2011-01-01T00:00:00Z" });
+
+  const c = client();
+
+  // A callback with a wrong state is refused.
+  const bad = await c.go("/api/auth/callback?code=x&state=nope");
+  assert.strictEqual(bad.headers.get("location"), "/?signin=expired");
+
+  // Sign in.
+  const cb = await c.signIn();
+  assert.strictEqual(cb.status, 302);
+  assert.strictEqual(cb.headers.get("location"), "/dashboard");
+  assert.ok(c.jar.has("ghfs_session"));
+  assert.ok(!c.jar.has("ghfs_oauth"));
+  assert.deepStrictEqual((await c.getJson("/api/config")).body, { signIn: true, signedIn: true, login: "octo" });
+
+  // Tokens are stored encrypted.
+  const stored = await memory.getUser(1001);
+  assert.ok(stored.accessToken.startsWith("v1.") && !stored.accessToken.includes("ghu_"));
+
+  // Cross-site posts are blocked.
+  const evil = await c.go("/api/sync", { method: "POST", headers: { origin: "https://evil.example" } });
+  assert.strictEqual(evil.status, 403);
+
+  // First sync is a baseline.
+  let r = await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.baseline, true);
+  assert.deepStrictEqual(r.body.counts.mutuals, 1);
+  assert.ok(fake.state.refreshCount >= 1, "short-lived token should have been refreshed");
+
+  let me = (await c.getJson("/api/me")).body;
+  assert.strictEqual(me.followers.length, 4);
+  assert.strictEqual(me.following.length, 3);
+  assert.strictEqual(me.events.length, 0);
+  assert.strictEqual(me.daily.length, 1);
+
+  // Bob unfollows, erin follows, you unfollow dave; carol renames (not a change).
+  fake.state.followers = [acct(1, "alice"), acct(3, "carol2"), acct(4, "acme-bot", "Bot"), acct(5, "erin")];
+  fake.state.following = [acct(2, "bob"), acct(8, "acme", "Organization")];
+  r = await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
+  assert.strictEqual(r.body.changes, 3);
+  me = (await c.getJson("/api/me")).body;
+  assert.deepStrictEqual(me.events.map((e) => `${e.kind}:${e.login}`).sort(),
+    ["followed_you:erin", "unfollowed_you:bob", "you_unfollowed:dave"]);
+  assert.ok(me.followers.some((f) => f[0] === "carol2"));
+
+  // Pagination over 100 accounts.
+  fake.state.followers = Array.from({ length: 250 }, (_, i) => acct(100 + i, `user${i}`));
+  r = await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
+  me = (await c.getJson("/api/me")).body;
+  assert.strictEqual(me.followers.length, 250);
+
+  // Insights via GraphQL.
+  fake.state.followers = [acct(1, "alice"), acct(5, "erin")];
+  const ins = await c.getJson("/api/insights");
+  assert.strictEqual(ins.status, 200, JSON.stringify(ins.body));
+  assert.strictEqual(ins.body.notable[0].login, "alice");
+  assert.strictEqual(ins.body.total, 2);
+
+  // Cron needs the secret, then snapshots everyone.
+  assert.strictEqual((await c.getJson("/api/cron/snapshot")).status, 401);
+  const cron = await c.getJson("/api/cron/snapshot", { headers: { authorization: "Bearer cron-secret-value" } });
+  assert.strictEqual(cron.status, 200);
+  assert.strictEqual(cron.body.done, 1);
+
+  // If GitHub stops accepting the refresh token, the user is asked to sign in again.
+  fake.state.refresh.clear();
+  const u = await memory.getUser(1001);
+  await memory.updateTokens(1001, { ...u, accessExpiresAt: new Date(Date.now() - 1000) });
+  r = await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
+  assert.strictEqual(r.status, 401);
+  assert.strictEqual(r.body.reauth, true);
+  me = (await c.getJson("/api/me")).body;
+  assert.strictEqual(me.user.needsReauth, true);
+  const cron2 = await c.getJson("/api/cron/snapshot", { headers: { authorization: "Bearer cron-secret-value" } });
+  assert.strictEqual(cron2.body.total, 0, "users needing re-auth are skipped");
+  const eventsBefore = me.events.length;
+  assert.ok(eventsBefore > 3);
+  await c.signIn();
+  me = (await c.getJson("/api/me")).body;
+  assert.strictEqual(me.user.needsReauth, false);
+  assert.strictEqual(me.events.length, eventsBefore, "history survives signing in again");
+
+  // Sign out ends the session but keeps data.
+  const out = await c.getJson("/api/auth/logout", { method: "POST", headers: { origin: base } });
+  assert.strictEqual(out.status, 200);
+  assert.strictEqual((await c.getJson("/api/me")).status, 401);
+  assert.ok(await memory.getUser(1001));
+
+  // Delete removes everything and revokes the grant on GitHub.
+  await c.signIn();
+  const del = await c.getJson("/api/account", { method: "DELETE", headers: { origin: base } });
+  assert.strictEqual(del.status, 200);
+  assert.strictEqual(del.body.revoked, true);
+  assert.strictEqual(fake.state.revoked.length, 1);
+  assert.strictEqual(await memory.getUser(1001), null);
+  assert.strictEqual((await c.getJson("/api/me")).status, 401);
+});
+
+test("a stolen session cookie can't be forged", async () => {
+  enableSignIn();
+  const c = client();
+  c.jar.set("ghfs_session", "made-up.signature");
+  assert.strictEqual((await c.getJson("/api/me")).status, 401);
+});

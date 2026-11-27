@@ -15,6 +15,11 @@
     <p class="tagline">Who follows you on GitHub, who doesn't follow back, and who unfollowed you.</p>
   </header>
 
+  <section id="account" class="account" hidden>
+    <a class="button gh" id="accountLink" href="/api/auth/login">Continue with GitHub</a>
+    <span class="hint" id="accountHint">Sign in to track your own account every day: catch unfollows without visiting, see history graphs and richer follower details.</span>
+  </section>
+
   <form id="lookup" autocomplete="off">
     <div class="row">
       <input id="username" name="username" placeholder="GitHub username" required spellcheck="false" autocapitalize="off">
@@ -64,9 +69,11 @@
   </section>
 
   <footer>
-    Runs entirely in your browser. Source on <a href="https://github.com/nandhu-44/ghfstats">GitHub</a>.
+    Checking a username runs entirely in your browser. Signing in stores your follower lists so they can be tracked daily;
+    see <a href="/privacy">what's stored</a>. Source on <a href="https://github.com/nandhu-44/ghfstats">GitHub</a>.
   </footer>
 </main>
 <script src="app.js"></script>
+<script src="account.js"></script>
 </body>
 </html>

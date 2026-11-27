@@ -1,7 +1,7 @@
 // Unit tests for the web app's logic. Run: node --test tests/
 const test = require("node:test");
 const assert = require("node:assert");
-const core = require("../app.js");
+const core = require("../public/app.js");
 
 const acct = (login, type = "User", id = 1) => core.compact({ login, id, type });
 const logins = (list) => list.map((a) => a.login);
