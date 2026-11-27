@@ -105,7 +105,7 @@ export function createFakeGitHub({ clientId, clientSecret, accessTtl = 28800 }) 
     const f = /^\/user\/following\/([^/]+)$/.exec(p);
     if (f && (req.method === "PUT" || req.method === "DELETE")) {
       state.followCalls.push({ method: req.method, login: f[1] });
-      if (state.followMode === "no-permission") return send(res, 403, { message: "Resource not accessible by integration" });
+      if (state.followMode === "no-permission") return send(res, 403, { message: "Resource not accessible by integration" }, { "x-accepted-github-permissions": "followers=write" });
       if (state.followMode === "rate-limited") return send(res, 403, { message: "You have exceeded a secondary rate limit." }, { "retry-after": "30" });
       const i = state.following.findIndex((a) => a.login.toLowerCase() === f[1].toLowerCase());
       if (req.method === "DELETE" && i >= 0) state.following.splice(i, 1);

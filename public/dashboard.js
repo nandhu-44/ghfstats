@@ -446,6 +446,9 @@
     if (data.user.needsReauth) {
       showNotice(el("span", null, (data.user.lastError || "Your GitHub sign-in expired.") + " ",
         el("a", { href: "/api/auth/login" }, "Sign in again")), "warn");
+    } else if (new URLSearchParams(location.search).get("followers") === "missing") {
+      showNotice(el("span", null, "GitHub didn't give this sign-in the Followers (read and write) permission, so unfollow and follow back won't work. " +
+        "Open GitHub Settings → Applications → Authorized GitHub Apps → GHF Stats and check whether it lists Followers. If it doesn't, revoke it and sign in again, approving Followers on GitHub's screen."), "warn");
     } else if (data.user.lastError) {
       showNotice(`Last snapshot problem: ${data.user.lastError}`, "warn");
     } else showNotice(null);
