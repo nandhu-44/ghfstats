@@ -4,7 +4,7 @@ import { decrypt, safeEqual } from "../../lib/crypto.mjs";
 import { api, exchangeCode } from "../../lib/github.mjs";
 import { handle, parseCookies, redirect } from "../../lib/http.mjs";
 import { OAUTH_COOKIE, clearCookie, startSession } from "../../lib/session.mjs";
-import { sealTokens } from "../../lib/snapshot.mjs";
+import { sealTokens, takeSnapshot } from "../../lib/snapshot.mjs";
 import { getStore } from "../../lib/store.mjs";
 
 export const GET = handle(async (request) => {
@@ -34,9 +34,17 @@ export const GET = handle(async (request) => {
   }
 
   const store = await getStore();
-  await store.upsertUser({
+  const user = await store.upsertUser({
     id: Number(me.id), login: me.login, name: me.name, avatarUrl: me.avatar_url, ...sealTokens(tokens),
   });
+  // Take the first snapshot here so the account has data stored as soon as sign-in finishes.
+  // The dashboard retries if this fails, so a failure doesn't block the sign-in.
+  let first = "existing";
+  if (!user.lastSnapshotAt) {
+    try { const r = await takeSnapshot(store, user); first = `taken (${r.daily.followers} followers, ${r.daily.following} following)`; }
+    catch (e) { first = `failed: ${e.message}`; }
+  }
+  console.log("signin stored", JSON.stringify({ store: store.kind || "memory", ...(store.where || {}), firstSnapshot: first }));
   const session = await startSession(request, store, Number(me.id));
   return redirect("/dashboard", [clear, session]);
 });

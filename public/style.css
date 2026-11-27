@@ -189,6 +189,7 @@ label.acct.off:hover { border-color: var(--line); }
 .action-bar { position: sticky; bottom: 12px; z-index: 5; margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow); }
 .action-bar #selCount { flex: 1 1 auto; font-weight: 600; }
+.action-bar #selCount small { font-weight: 400; color: var(--muted); }
 .action-bar button { padding: 8px 14px; font-size: 14px; }
 .action-bar #actBtn.unfollow { background: var(--bad); border-color: var(--bad); color: #fff; }
 .run-panel { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }

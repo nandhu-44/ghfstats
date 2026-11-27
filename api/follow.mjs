@@ -82,14 +82,17 @@ export const POST = handle(async (request) => {
   let message = "";
   try { message = (await res.json()).message || ""; } catch { /* no body */ }
   const retryAfter = Number(res.headers.get("retry-after")) || null;
+  // What GitHub said (no tokens or usernames), so failures can be diagnosed from the logs.
+  const github = { status: res.status, message: message.slice(0, 200), needs: res.headers.get("x-accepted-github-permissions") || null };
+  console.warn("follow failed", JSON.stringify({ action, ...github, remaining: res.headers.get("x-ratelimit-remaining") }));
   if (res.status === 429 || (res.status === 403 && (retryAfter || res.headers.get("x-ratelimit-remaining") === "0" || /rate limit/i.test(message)))) {
-    return fail(429, "GitHub asked ghfstats to slow down. Wait a minute, then try again.", { retryAfter: retryAfter || 60 });
+    return fail(429, "GitHub asked ghfstats to slow down. Wait a minute, then try again.", { retryAfter: retryAfter || 60, github });
   }
   if (res.status === 403 && /not accessible by integration|permission/i.test(message)) {
-    return fail(403, "ghfstats isn't allowed to change who you follow yet. Sign in again and approve the Followers permission.", { needsPermission: true });
+    return fail(403, `GitHub said: "${github.message}". Your sign-in doesn't carry the Followers permission yet.`, { needsPermission: true, github });
   }
-  if (res.status === 401) return fail(401, "Your GitHub sign-in expired. Sign in again.", { reauth: true });
-  if (res.status === 404) return fail(404, `GitHub has no account @${target.login} any more.`);
-  if (res.status === 422) return fail(422, "GitHub refused this, which can mean its spam protection kicked in. Stop for now and try later.");
-  return fail(502, `GitHub returned an error (${res.status}).`);
+  if (res.status === 401) return fail(401, "Your GitHub sign-in expired. Sign in again.", { reauth: true, github });
+  if (res.status === 404) return fail(404, `GitHub has no account @${target.login} any more.`, { github });
+  if (res.status === 422) return fail(422, "GitHub refused this, which can mean its spam protection kicked in. Stop for now and try later.", { github });
+  return fail(502, `GitHub returned an error (${res.status}${github.message ? `: ${github.message}` : ""}).`, { github });
 });

@@ -32,7 +32,7 @@
   const typeFilter = new Set();
 
   // Following and unfollowing picked accounts. The server enforces the same limits.
-  const LIMITS = { unfollow: { batch: 50, perHour: 100, perDay: 300, gapMs: 1500 }, follow: { batch: 10, perHour: 20, perDay: 50, gapMs: 3000 } };
+  const LIMITS = { unfollow: { batch: 10, perHour: 100, perDay: 300, gapMs: 1500 }, follow: { batch: 10, perHour: 20, perDay: 50, gapMs: 3000 } };
   const TAB_ACTION = { notFollowingBack: "unfollow", following: "unfollow", mutuals: "unfollow", unfollowers: "unfollow",
     youDontFollowBack: "follow", followers: "follow" };
   let selecting = false, running = null;
@@ -220,7 +220,7 @@
     $("list").replaceChildren(frag);
     $("emptyList").hidden = shown.length > 0;
     $("emptyList").textContent = tab === "unfollowers" && !full.length ? "No unfollows recorded yet." : "Nobody here.";
-    renderSelectControls(shown);
+    renderSelectControls();
   }
 
   // ---------------------------------------------------------------- select, confirm, run
@@ -256,9 +256,7 @@
     renderSelectControls();
   }
 
-  let lastShown = [];
-  function renderSelectControls(shown) {
-    if (shown) lastShown = shown;
+  function renderSelectControls() {
     const action = TAB_ACTION[tab];
     const lim = LIMITS[action];
     const any = view[tab].some((a) => !eligibility(a, action));
@@ -269,17 +267,14 @@
     btn.disabled = Boolean(running);
     $("selectHint").hidden = !selecting;
     $("selectHint").textContent = action === "follow"
-      ? `Pick people who follow you to follow back, up to ${lim.batch} at a time. Each gets a GitHub notification.`
-      : `Pick accounts to unfollow, up to ${lim.batch} at a time. GitHub doesn't tell them.`;
+      ? `Tick people who follow you to follow back, up to ${lim.batch} at a time. Each gets a GitHub notification.`
+      : `Tick accounts to unfollow, up to ${lim.batch} at a time. GitHub doesn't tell them.`;
     $("actionBar").hidden = !selecting || Boolean(running);
-    $("selCount").textContent = `${fmtNum(selected.size)} of ${lim.batch} selected`;
+    $("selCount").replaceChildren(`${fmtNum(selected.size)} selected `, el("small", null, `· up to ${lim.batch} at a time`));
     const act = $("actBtn");
     act.disabled = !selected.size;
     act.className = action === "unfollow" ? "unfollow" : "";
     act.textContent = selected.size ? `${action === "follow" ? "Follow back" : "Unfollow"} ${fmtNum(selected.size)}` : action === "follow" ? "Follow back" : "Unfollow";
-    const room = lastShown.filter((a) => !selected.has(a.id) && !eligibility(a, action)).length;
-    $("selAllBtn").disabled = !room || selected.size >= lim.batch;
-    $("selAllBtn").textContent = room > lim.batch - selected.size ? `Select ${fmtNum(lim.batch - selected.size)} more shown` : "Select all shown";
     $("selClearBtn").disabled = !selected.size;
   }
 
@@ -289,15 +284,6 @@
     renderList();
   };
   $("selClearBtn").onclick = () => { selected.clear(); renderList(); };
-  $("selAllBtn").onclick = () => {
-    const action = TAB_ACTION[tab], cap = LIMITS[action].batch;
-    for (const a of lastShown) {
-      if (selected.size >= cap) break;
-      if (!eligibility(a, action)) selected.set(a.id, a);
-    }
-    renderList();
-  };
-
   $("actBtn").onclick = () => {
     const action = TAB_ACTION[tab], lim = LIMITS[action];
     const people = [...selected.values()];
@@ -325,6 +311,11 @@
     if (action === "unfollow") data.following = data.following.filter((c) => c[1] !== a.id);
     else if (!data.following.some((c) => c[1] === a.id)) data.following.push([a.login, a.id, a.type]);
     data.events.unshift({ kind: action === "follow" ? "you_followed" : "you_unfollowed", login: a.login, id: a.id, type: a.type, at: new Date().toISOString() });
+  }
+
+  async function reauthorize() {
+    const r = await call("/api/auth/reauthorize", { method: "POST" });
+    location.href = (r.ok && r.body.next) || "/api/auth/login";
   }
 
   async function run(action, people) {
@@ -372,8 +363,10 @@
         $("runErrors").append(el("li", null, errors[errors.length - 1]));
       } else {
         if (r.body.needsPermission) {
-          showNotice(el("span", null, "To follow or unfollow from ghfstats, GitHub needs you to approve the Followers permission. ",
-            el("a", { href: "/api/auth/login" }, "Sign in again to approve it")), "warn");
+          const btn = el("button", { type: "button", class: "button small" }, "Re-authorize with GitHub");
+          btn.addEventListener("click", reauthorize);
+          showNotice(el("span", null, (r.body.error || "GitHub refused the change.") +
+            " GitHub only adds new permissions when you approve ghfstats again. Your data stays. ", btn), "warn");
         } else if (r.status === 401) {
           showNotice(el("span", null, (r.body.error || "Your GitHub sign-in expired.") + " ", el("a", { href: "/api/auth/login" }, "Sign in again")), "warn");
         }

@@ -153,14 +153,20 @@ test("full flow: sign in, baseline, changes, refresh, insights, cron, re-auth, s
   const evil = await c.go("/api/sync", { method: "POST", headers: { origin: "https://evil.example" } });
   assert.strictEqual(evil.status, 403);
 
-  // First sync is a baseline.
+  // Sign-in already stored the first snapshot as a baseline.
+  let me = (await c.getJson("/api/me")).body;
+  assert.ok(me.user.lastSnapshotAt, "sign-in should take the first snapshot");
+  assert.strictEqual(me.followers.length, 4);
+  assert.strictEqual(me.daily[0].mutuals, 1);
+
+  // A sync with nothing changed records no changes.
   let r = await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
-  assert.strictEqual(r.body.baseline, true);
-  assert.deepStrictEqual(r.body.counts.mutuals, 1);
+  assert.strictEqual(r.body.baseline, false);
+  assert.strictEqual(r.body.changes, 0);
   assert.ok(fake.state.refreshCount >= 1, "short-lived token should have been refreshed");
 
-  let me = (await c.getJson("/api/me")).body;
+  me = (await c.getJson("/api/me")).body;
   assert.strictEqual(me.followers.length, 4);
   assert.strictEqual(me.following.length, 3);
   assert.strictEqual(me.events.length, 0);
@@ -322,4 +328,18 @@ test("follow and unfollow: only picked people in your lists, follow-back only, l
   assert.strictEqual(r.body.limit, true);
   assert.match(r.body.error, /20 accounts in the last hour/);
   delete process.env.GHFS_FOLLOW_GAP_MS;
+
+  // Re-authorize: revokes the grant so GitHub shows its consent screen again, ends the session, keeps the data.
+  const revokedBefore = fake.state.revoked.length;
+  assert.strictEqual((await c.go("/api/auth/reauthorize", { method: "POST", headers: { origin: "https://evil.example" } })).status, 403);
+  r = await c.getJson("/api/auth/reauthorize", { method: "POST", headers: { origin: base } });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.revoked, true);
+  assert.strictEqual(r.body.next, "/api/auth/login");
+  assert.strictEqual(fake.state.revoked.length, revokedBefore + 1);
+  assert.strictEqual((await c.getJson("/api/me")).status, 401, "session ended");
+  assert.ok(await memory.getUser(u.id), "data kept");
+  await c.signIn();
+  me = (await c.getJson("/api/me")).body;
+  assert.ok(me.following.some((f) => f[0] === "alice"), "history is still there after signing in again");
 });

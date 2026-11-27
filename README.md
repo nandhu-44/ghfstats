@@ -1,125 +1,106 @@
-# ghfstats
+<p align="center">
+  <img src="public/icon.svg" width="88" alt="ghfstats icon">
+</p>
 
-GitHub follower stats that run entirely in your browser. Enter any username to see:
+<h1 align="center">ghfstats</h1>
 
-- **Followers** and **following**, with each account's type (User, Organization, Bot), avatar and profile link
-- **Mutuals**
-- **Not following back**: accounts you follow that don't follow you
-- **You don't follow back**: accounts that follow you that you don't follow
+<p align="center">
+  See who follows you on GitHub, who doesn't follow back, and who unfollowed you.<br>
+  <a href="https://ghfstats.vercel.app"><strong>ghfstats.vercel.app</strong></a>
+</p>
+
+## Features
+
+- **Followers, following and mutuals** for any username, with account type (User, Organization, Bot)
+- **Not following back** and **you don't follow back** lists
 - **Unfollowed you**: who stopped following you, and roughly when
-- A **change history** of every follow and unfollow, both ways
+- **Change history** of every follow and unfollow, both ways
 
-The lookup needs no account or backend: the page calls the GitHub REST API straight from the browser.
+Sign in with GitHub and you also get:
 
-## How unfollows are detected
+- **Daily snapshots** taken for you, so unfollows are caught without opening the site
+- **History in the cloud**, the same on every device
+- **Follower graph** over time and **follower insights** (most-followed followers, likely
+  follow-for-follow accounts, new accounts, combined reach)
+- **Unfollow or follow back** up to 10 accounts at a time, from people you tick yourself
 
-GitHub has no "who unfollowed me" API. Each time you check, ghfstats saves a snapshot of the
-follower and following lists in your browser's localStorage and compares it with the last one.
-The first check only records a baseline, so unfollowers show up from the second check on.
+## How it works
 
-Snapshots stay in that browser. Use **Export snapshots** to back them up or move them to another
-device, and **Import snapshots** to load them back. Import also accepts snapshot files from the CLI below.
+**Without signing in**, the page calls the GitHub API straight from your browser. Snapshots are
+kept in that browser's localStorage, and unfollows are found by comparing each check with the last
+one, so the first check is only a baseline. GitHub allows 60 requests an hour without a token
+(about 3,000 accounts); paste a token with no permissions for more.
 
-## Token (optional)
+**With "Continue with GitHub"**, ghfstats uses a GitHub App. Signing in stores your account, your
+encrypted GitHub token and a first snapshot of your followers and following in Postgres. A daily
+job adds a new snapshot and records what changed. Only your own account is tracked, and
+**Delete my data** on the dashboard removes everything and revokes access. See
+[/privacy](https://ghfstats.vercel.app/privacy).
 
-Without a token GitHub allows 60 requests an hour per IP, which covers about 3,000 followers plus following.
-For bigger accounts, paste a token under "GitHub token". A fine-grained token with no permissions
-(public data only) is enough. It is sent only to `api.github.com`, and it is saved only if you tick
-"Remember on this device".
+The data lives in six tables in the `public` schema, created on first use: `ghfs_user`,
+`ghfs_session`, `ghfs_edge` (who follows whom now), `ghfs_event` (follows and unfollows),
+`ghfs_daily` (counts per day) and `ghfs_action` (unfollows and follow-backs made from the dashboard).
 
-## Continue with GitHub (optional)
+### Unfollowing and following back
 
-On Vercel, people can also sign in with GitHub. Signing in adds:
+GitHub's [Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies)
+ban automated or bulk following, so ghfstats keeps it small and deliberate:
 
-- **Daily snapshots** taken for you once a day, so unfollows are caught without opening the page
-- **History that follows you** across devices and browsers, kept in a database
-- A **follower graph** over time, and a list of the last 7 days of changes
-- **Follower insights**: your most-followed followers, likely follow-for-follow accounts, brand-new
-  accounts, median follower count and combined reach (from GitHub's GraphQL API)
-- **Unfollow or follow back in batches**: pick accounts on the dashboard, confirm the list, and
-  ghfstats makes the changes one at a time (see below)
+- Only accounts you tick and confirm, at most 10 per batch. Nothing runs on a schedule.
+- Following is only offered for people who already follow you.
+- Changes go out one at a time, 1.5 seconds apart for unfollows and 3 for follows.
+- Each account is capped at 100 unfollows an hour and 300 a day, and 20 follows an hour and 50 a
+  day (`FOLLOW_LIMITS` in `lib/config.mjs`).
 
-Only the signed-in person's own account is tracked. GitHub tokens are encrypted before they're
-stored, and **Delete my data** on the dashboard removes everything and revokes ghfstats' access.
-`/privacy` explains what is kept. Without the setup below, the site runs exactly as before: the
-sign-in button stays hidden and nothing is stored on a server.
+This needs the App's **Followers: Read and write** permission. GitHub only grants a newly added
+permission when the person approves the App again, so the dashboard offers **Re-authorize with
+GitHub** when it's missing.
 
-### Setup
+## Self-hosting
 
-1. **Register a GitHub App** at github.com → Settings → Developer settings → GitHub Apps → New GitHub App.
-   - Callback URL: `https://<your-site>/api/auth/callback` (add `http://localhost:3000/api/auth/callback` for local use)
-   - Tick "Request user authorization (OAuth) during installation" off; leave "Expire user authorization tokens" on.
-   - Webhook: untick "Active".
-   - Permissions: Account permissions → **Followers: Read and write**. Only needed for unfollowing and
-     following back from the dashboard; everything else reads public data. Without it, those buttons
-     tell the person that the permission is missing.
-   - Generate a client secret.
-2. **Add a Postgres database.** In the Vercel project, Storage → Create Database → Neon (free plan), and
-   connect it to the project. That sets `DATABASE_URL`. Any Postgres works; `POSTGRES_URL` is read too.
-   Tables are created on first use.
-3. **Set environment variables** in the Vercel project (Production and Preview):
+The site is static files in `public/` plus serverless functions in `api/`, with no build step.
+
+1. **Fork and import** the repo at vercel.com/new (framework preset "Other", no build command).
+   With nothing else set up, everything except sign-in already works.
+2. **Create a GitHub App** (Settings → Developer settings → GitHub Apps → New GitHub App):
+   - Callback URL: `https://<your-site>/api/auth/callback`
+   - Keep "Expire user authorization tokens" on, and untick the webhook's "Active"
+   - Account permissions → **Followers: Read and write** (only for unfollow and follow back)
+   - Generate a client secret
+3. **Add a database:** in the Vercel project, Storage → Create Database → Neon, connected to the
+   project. That sets `DATABASE_URL`. Any Postgres works.
+4. **Set environment variables** (Production and Preview), then redeploy:
 
    | Variable | Value |
    | --- | --- |
    | `GITHUB_CLIENT_ID` | The App's client ID |
    | `GITHUB_CLIENT_SECRET` | The App's client secret |
-   | `AUTH_SECRET` | 32+ random characters (`openssl rand -base64 48`); encrypts tokens and signs cookies |
-   | `CRON_SECRET` | Random string; Vercel sends it to the daily snapshot job |
-   | `DATABASE_URL` | Set by the Neon integration |
+   | `AUTH_SECRET` | 32+ random characters (`openssl rand -base64 48`) |
+   | `CRON_SECRET` | Any random string, for the daily snapshot job |
 
-4. **Redeploy.** The daily job runs at 02:30 UTC (Vercel Hobby runs crons once a day, at some point in that hour).
+The daily job runs at 02:30 UTC. Changing `AUTH_SECRET` signs everyone out.
 
-If you add the Followers permission to an App people have already signed in to, GitHub doesn't apply
-it until each of them approves it. They're asked when they next sign in, and the dashboard links to
-sign-in when the permission is missing.
+**Locally**, `npm run dev` serves everything at http://localhost:3000. Set `GHFS_MEMORY_STORE=1`
+plus the GitHub App variables to try sign-in without a database. Any static host can serve
+`public/` on its own, without sign-in.
 
-### Unfollowing and following back
-
-GitHub's [Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies)
-ban "automated starring or following" and "automated excessive bulk activity", and its
-[rules on disruption](https://docs.github.com/en/site-policy/acceptable-use-policies/github-disrupting-the-experience-of-other-users)
-ban following accounts "in large volume in a short period of time". So ghfstats keeps these to
-deliberate, small batches:
-
-- Every action is a person the user ticked and confirmed. Nothing runs on a schedule.
-- Following is only offered for people who already follow you (follow back), never strangers.
-- Batches are at most 50 unfollows or 10 follows, sent one at a time about 1.5 or 3 seconds apart,
-  well under GitHub's [secondary rate limit](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
-  of 80 content-changing requests a minute.
-- The server allows each account 100 unfollows an hour and 300 a day, and 20 follows an hour and 50 a day
-  (`FOLLOW_LIMITS` in `lib/config.mjs`), and stops when GitHub asks it to slow down.
-
-Changing `AUTH_SECRET` signs everyone out and makes stored tokens unreadable, so people have to sign in again.
-
-## Hosting
-
-The site is static files in `public/` plus serverless functions in `api/`, with no build step.
-
-- **Vercel:** import the repo at vercel.com/new with the framework preset "Other" and no build
-  command. `vercel.json` sets `public` as the output directory and adds the daily cron.
-- **GitHub Pages or any static host:** serve the `public/` folder. Everything except sign-in works.
-- **Locally:** `npm run dev` serves the site and the API at http://localhost:3000. With no environment
-  variables, sign-in stays hidden. To try sign-in without a database, set `GHFS_MEMORY_STORE=1` along
-  with the GitHub App variables (data is lost when the server stops). You can also just open `public/index.html`.
-
-Link straight to a user with `?user=<username>`, for example `https://your-site/?user=nandhu-44`.
-
-## Command-line version
+## Command line
 
 `cli/ghfstats.py` does the same from a terminal (Python 3, standard library only) and keeps
-snapshots as JSON files in `./data`:
+snapshots in `./data`:
 
 ```
 python3 cli/ghfstats.py nandhu-44 --html report.html
 ```
 
-`cli/snapshot-workflow.example.yml` is a GitHub Action that runs the CLI daily and commits the
-snapshots. It is not active; copy it to `.github/workflows/` if you want automatic snapshots
-(they'll be visible to anyone who can read the repo).
-
 ## Tests
 
 ```
-npm test                                           # web app, sign-in, snapshots and cron, against a fake GitHub
-cd cli && python3 -m unittest discover -s tests    # CLI, against a fake GitHub API
+npm test                                           # web app against a fake GitHub
+cd cli && python3 -m unittest discover -s tests    # CLI
 ```
+
+## Support
+
+If ghfstats saved you some scrolling, you can [sponsor me on GitHub](https://github.com/sponsors/nandhu-44)
+or [buy me a chai](https://buymeachai.in/nandhu).
