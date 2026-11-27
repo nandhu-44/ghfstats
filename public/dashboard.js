@@ -366,7 +366,7 @@
           const btn = el("button", { type: "button", class: "button small" }, "Re-authorize with GitHub");
           btn.addEventListener("click", reauthorize);
           showNotice(el("span", null, (r.body.error || "GitHub refused the change.") +
-            " GitHub only adds new permissions when you approve ghfstats again. Your data stays. ", btn), "warn");
+            " GitHub only adds it when you approve ghfstats again, so re-authorize and look for Followers on GitHub's screen. If it isn't listed there, the GitHub App itself needs Followers set to Read and write. Your data stays. ", btn), "warn");
         } else if (r.status === 401) {
           showNotice(el("span", null, (r.body.error || "Your GitHub sign-in expired.") + " ", el("a", { href: "/api/auth/login" }, "Sign in again")), "warn");
         }

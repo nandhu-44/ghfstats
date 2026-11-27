@@ -89,7 +89,7 @@ export const POST = handle(async (request) => {
     return fail(429, "GitHub asked ghfstats to slow down. Wait a minute, then try again.", { retryAfter: retryAfter || 60, github });
   }
   if (res.status === 403 && /not accessible by integration|permission/i.test(message)) {
-    return fail(403, `GitHub said: "${github.message}". Your sign-in doesn't carry the Followers permission yet.`, { needsPermission: true, github });
+    return fail(403, `GitHub refused: this sign-in doesn't have the Followers (read and write) permission.`, { needsPermission: true, github });
   }
   if (res.status === 401) return fail(401, "Your GitHub sign-in expired. Sign in again.", { reauth: true, github });
   if (res.status === 404) return fail(404, `GitHub has no account @${target.login} any more.`, { github });
