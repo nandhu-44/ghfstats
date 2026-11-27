@@ -124,3 +124,7 @@ cd cli && python3 -m unittest discover -s tests    # CLI
 
 If ghfstats saved you some scrolling, you can [sponsor me on GitHub](https://github.com/sponsors/nandhu-44)
 or [buy me a chai](https://buymeachai.in/nandhu).
+
+## License
+
+[MIT](LICENSE) © 2026 Nandhu Krishnan A
