@@ -1,0 +1,34 @@
+# Runs the follower snapshot every day and commits the new snapshot,
+# the change log and a fresh HTML report back to this repo.
+# By default it tracks the repo owner; set a repository variable
+# GHFS_USERNAME to track someone else.
+name: Follower snapshot
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 08:00 IST daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Take snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHFS_USERNAME: ${{ vars.GHFS_USERNAME || github.repository_owner }}
+        run: python3 cli/ghfstats.py "$GHFS_USERNAME" --html report.html --json report.json
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data report.html report.json
+          git diff --cached --quiet || git commit -m "Follower snapshot $(date -u +%Y-%m-%d)"
+          git push
