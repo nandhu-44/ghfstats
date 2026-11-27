@@ -13,6 +13,7 @@ export function createFakeGitHub({ clientId, clientSecret, accessTtl = 28800 }) 
     codes: new Map(), access: new Map(), refresh: new Map(),
     refreshCount: 0, revoked: [], accessTtl,
     details: new Map(), // id -> {followers, following, createdAt}
+    followCalls: [], followMode: "ok", // "ok" | "no-permission" | "rate-limited"
   };
 
   const issue = () => {
@@ -100,6 +101,20 @@ export function createFakeGitHub({ clientId, clientSecret, accessTtl = 28800 }) 
       const list = state[m[2]];
       const per = Number(url.searchParams.get("per_page")) || 30, page = Number(url.searchParams.get("page")) || 1;
       return send(res, 200, list.slice((page - 1) * per, page * per));
+    }
+    const f = /^\/user\/following\/([^/]+)$/.exec(p);
+    if (f && (req.method === "PUT" || req.method === "DELETE")) {
+      state.followCalls.push({ method: req.method, login: f[1] });
+      if (state.followMode === "no-permission") return send(res, 403, { message: "Resource not accessible by integration" });
+      if (state.followMode === "rate-limited") return send(res, 403, { message: "You have exceeded a secondary rate limit." }, { "retry-after": "30" });
+      const i = state.following.findIndex((a) => a.login.toLowerCase() === f[1].toLowerCase());
+      if (req.method === "DELETE" && i >= 0) state.following.splice(i, 1);
+      if (req.method === "PUT" && i < 0) {
+        const from = state.followers.find((a) => a.login.toLowerCase() === f[1].toLowerCase()) || { id: 9e6, login: f[1], type: "User" };
+        state.following.push(from);
+      }
+      res.writeHead(204);
+      return res.end();
     }
     if (p === "/graphql" && req.method === "POST") {
       const { variables } = JSON.parse(await body(req));

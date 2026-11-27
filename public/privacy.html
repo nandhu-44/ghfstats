@@ -22,19 +22,28 @@
     An optional token stays in your browser and is sent only to GitHub.</p>
 
   <h2>When you sign in with GitHub</h2>
-  <p>ghfstats asks GitHub for no extra permissions. It can only read what is already public on your profile.</p>
+  <p>ghfstats reads what is already public on your profile. It also asks GitHub for permission to change who you follow,
+    and uses it only when you pick accounts on your dashboard and confirm (see below).</p>
   <p>To track your account every day, it stores:</p>
   <ul>
     <li>your GitHub user id, username, display name and avatar link</li>
     <li>your GitHub sign-in tokens, encrypted, so the daily snapshot can run while you're away</li>
     <li>your current followers and following (their public usernames, ids and account types)</li>
     <li>follow and unfollow events with dates, and a daily count of followers, following and mutuals</li>
+    <li>the times of follows and unfollows you made through ghfstats, to apply the limits below</li>
   </ul>
   <p>Only your own account is tracked. Looking up someone else's username is never saved on the server.
     Follower insights are fetched when you ask for them and are not stored. When you look up a username while signed in,
     the lookup uses your GitHub sign-in so you get a higher limit; it isn't stored either.</p>
   <p>Follows on GitHub are public, so there is no hidden follower data for ghfstats to show.
     Nothing is sold, shared or used for advertising.</p>
+
+  <h2>Following and unfollowing</h2>
+  <p>On your dashboard you can pick accounts to unfollow, or pick people who follow you to follow back. Nothing happens until
+    you confirm the list. ghfstats then makes one request to GitHub for each person, a few seconds apart, and records it in your timeline.</p>
+  <p>GitHub's rules ban automated or high-volume following, so ghfstats never follows anyone on its own, only offers following
+    for people who already follow you, and limits each account to 100 unfollows an hour (300 a day) and 20 follows an hour (50 a day).
+    GitHub doesn't notify anyone you unfollow; people you follow get GitHub's usual notification.</p>
 
   <h2>Stopping</h2>
   <p>Signing out ends the session in that browser; daily tracking continues. <strong>Delete my data</strong> on your dashboard

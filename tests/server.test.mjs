@@ -246,3 +246,80 @@ test("a stolen session cookie can't be forged", async () => {
   c.jar.set("ghfs_session", "made-up.signature");
   assert.strictEqual((await c.getJson("/api/me")).status, 401);
 });
+
+test("follow and unfollow: only picked people in your lists, follow-back only, limits, permission errors", async () => {
+  enableSignIn();
+  process.env.GHFS_FOLLOW_GAP_MS = "0";
+  fake.state.followMode = "ok";
+  fake.state.followCalls = [];
+  fake.state.followers = [acct(1, "alice"), acct(2, "bob")];
+  fake.state.following = [acct(2, "bob"), acct(7, "dave")];
+  const c = client();
+  await c.signIn();
+  assert.strictEqual((await c.getJson("/api/sync", { method: "POST", headers: { origin: base } })).status, 200);
+  const post = (body, origin = base) => c.getJson("/api/follow", {
+    method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body),
+  });
+
+  assert.strictEqual((await post({ action: "unfollow", login: "dave" }, "https://evil.example")).status, 403);
+  assert.strictEqual((await client().getJson("/api/follow", { method: "POST", headers: { origin: base }, body: JSON.stringify({ action: "unfollow", login: "dave" }) })).status, 401);
+  assert.strictEqual((await post({ action: "unfollow", login: "../user" })).status, 400);
+  assert.strictEqual((await post({ action: "block", login: "dave" })).status, 400);
+
+  // Unfollow someone you follow: GitHub is called and your lists and history update.
+  let r = await post({ action: "unfollow", login: "Dave" });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.deepStrictEqual(fake.state.followCalls.at(-1), { method: "DELETE", login: "dave" });
+  let me = (await c.getJson("/api/me")).body;
+  assert.ok(!me.following.some((f) => f[0] === "dave"));
+  assert.ok(me.events.some((e) => e.kind === "you_unfollowed" && e.login === "dave"));
+
+  // You can't unfollow someone you don't follow, or follow a stranger; follow-back works.
+  assert.strictEqual((await post({ action: "unfollow", login: "dave" })).status, 409);
+  assert.strictEqual((await post({ action: "follow", login: "stranger" })).status, 409);
+  assert.strictEqual((await post({ action: "follow", login: "bob" })).status, 409, "already following");
+  r = await post({ action: "follow", login: "alice" });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.deepStrictEqual(fake.state.followCalls.at(-1), { method: "PUT", login: "alice" });
+  me = (await c.getJson("/api/me")).body;
+  assert.ok(me.following.some((f) => f[0] === "alice"));
+  const calls = fake.state.followCalls.length;
+
+  // A sync afterwards sees no new change (the store already matches GitHub).
+  r = await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
+  assert.strictEqual(r.body.changes, 0);
+
+  // Missing Followers permission and GitHub's rate limit come back as clear errors.
+  fake.state.followMode = "no-permission";
+  r = await post({ action: "unfollow", login: "bob" });
+  assert.strictEqual(r.status, 403);
+  assert.strictEqual(r.body.needsPermission, true);
+  fake.state.followMode = "rate-limited";
+  r = await post({ action: "unfollow", login: "bob" });
+  assert.strictEqual(r.status, 429);
+  assert.strictEqual(r.body.retryAfter, 30);
+  fake.state.followMode = "ok";
+  me = (await c.getJson("/api/me")).body;
+  assert.ok(me.following.some((f) => f[0] === "bob"), "failed calls change nothing");
+
+  // The minimum gap between actions.
+  process.env.GHFS_FOLLOW_GAP_MS = "60000";
+  r = await post({ action: "unfollow", login: "bob" });
+  assert.strictEqual(r.status, 429);
+  assert.strictEqual(fake.state.followCalls.length, calls + 2, "GitHub isn't called when ghfstats says slow down");
+  process.env.GHFS_FOLLOW_GAP_MS = "0";
+
+  // The hourly limit on follows (20): pretend 19 more follow-backs happened in the last hour.
+  const u = (await c.getJson("/api/me")).body.user;
+  const now = Date.now();
+  for (let i = 0; i < 19; i++) {
+    await memory.applyFollowChange(u.id, { kind: "you_followed", id: 500 + i, login: `x${i}`, type: "User", at: new Date(now - 60000 + i) });
+  }
+  fake.state.followers.push(acct(3, "carol"));
+  await c.getJson("/api/sync", { method: "POST", headers: { origin: base } });
+  r = await post({ action: "follow", login: "carol" });
+  assert.strictEqual(r.status, 429);
+  assert.strictEqual(r.body.limit, true);
+  assert.match(r.body.error, /20 accounts in the last hour/);
+  delete process.env.GHFS_FOLLOW_GAP_MS;
+});

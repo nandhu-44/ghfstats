@@ -50,9 +50,41 @@
     <div class="filters">
       <input id="filter" placeholder="Filter by username" spellcheck="false">
       <div class="chips" id="typeChips"></div>
+      <button type="button" id="selectBtn" class="secondary" aria-pressed="false" hidden>Select</button>
     </div>
+    <p class="hint" id="selectHint" hidden></p>
     <div class="grid" id="list"></div>
     <p class="empty" id="emptyList" hidden>Nobody here.</p>
+
+    <div class="action-bar" id="actionBar" hidden>
+      <span id="selCount">0 selected</span>
+      <button type="button" id="selAllBtn" class="secondary">Select all shown</button>
+      <button type="button" id="selClearBtn" class="secondary">Clear</button>
+      <button type="button" id="actBtn" disabled>Unfollow</button>
+    </div>
+
+    <section class="run-panel" id="runPanel" hidden aria-live="polite">
+      <div class="run-head">
+        <strong id="runTitle"></strong>
+        <button type="button" id="runStop" class="secondary">Stop</button>
+      </div>
+      <progress id="runProgress" value="0" max="1"></progress>
+      <p class="hint" id="runNow"></p>
+      <ul class="run-errors" id="runErrors"></ul>
+    </section>
+
+    <dialog id="confirmDialog" class="confirm">
+      <form method="dialog">
+        <h3 id="confirmTitle"></h3>
+        <p id="confirmText"></p>
+        <ul class="confirm-list" id="confirmList"></ul>
+        <p class="hint" id="confirmPace"></p>
+        <div class="row confirm-actions">
+          <button value="cancel" class="secondary" formnovalidate>Cancel</button>
+          <button value="ok" id="confirmOk"></button>
+        </div>
+      </form>
+    </dialog>
 
     <h2>Follower insights</h2>
     <p class="hint">Looks up each follower's own numbers on GitHub (up to 3,000 followers). Nothing from this is saved.</p>

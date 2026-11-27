@@ -176,3 +176,37 @@ footer { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 48px;
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
 .page-title { margin: 24px 0 8px; }
+
+/* Select, confirm and run: following and unfollowing picked accounts */
+.filters #selectBtn { padding: 6px 12px; font-size: 13px; }
+.filters #selectBtn[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+label.acct { cursor: pointer; }
+label.acct input { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--accent); }
+label.acct:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+label.acct.off { cursor: default; opacity: .55; }
+label.acct.off:hover { border-color: var(--line); }
+.acct .why { font-size: 11px; color: var(--muted); flex: none; }
+.action-bar { position: sticky; bottom: 12px; z-index: 5; margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow); }
+.action-bar #selCount { flex: 1 1 auto; font-weight: 600; }
+.action-bar button { padding: 8px 14px; font-size: 14px; }
+.action-bar #actBtn.unfollow { background: var(--bad); border-color: var(--bad); color: #fff; }
+.run-panel { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.run-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.run-head button { padding: 6px 12px; font-size: 13px; }
+.run-panel progress { width: 100%; height: 8px; margin: 10px 0 4px; accent-color: var(--accent); }
+.run-errors { margin: 6px 0 0; padding-left: 18px; color: var(--bad); font-size: 13px; }
+.run-errors:empty { display: none; }
+dialog.confirm { max-width: 460px; width: calc(100% - 32px); padding: 20px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--fg); box-shadow: var(--shadow); }
+dialog.confirm::backdrop { background: rgba(0,0,0,.45); }
+dialog.confirm h3 { margin: 0 0 8px; font-size: 18px; }
+dialog.confirm form { margin: 0; }
+.confirm-list { max-height: 220px; overflow: auto; margin: 8px 0; padding: 8px 8px 8px 26px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 14px; }
+.confirm-actions { justify-content: flex-end; margin-top: 14px; }
+#confirmOk.unfollow { background: var(--bad); border-color: var(--bad); color: #fff; }
+@media (max-width: 520px) {
+  .action-bar { bottom: 8px; }
+  .action-bar #selCount { flex-basis: 100%; }
+  .action-bar #actBtn { margin-left: auto; }
+}

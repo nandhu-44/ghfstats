@@ -31,6 +31,15 @@
   let data = null, view = null, tab = "notFollowingBack";
   const typeFilter = new Set();
 
+  // Following and unfollowing picked accounts. The server enforces the same limits.
+  const LIMITS = { unfollow: { batch: 50, perHour: 100, perDay: 300, gapMs: 1500 }, follow: { batch: 10, perHour: 20, perDay: 50, gapMs: 3000 } };
+  const TAB_ACTION = { notFollowingBack: "unfollow", following: "unfollow", mutuals: "unfollow", unfollowers: "unfollow",
+    youDontFollowBack: "follow", followers: "follow" };
+  let selecting = false, running = null;
+  const selected = new Map(); // id -> account
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;
+
   function setStatus(msg, isError) {
     $("status").textContent = msg || "";
     $("status").className = isError ? "error" : "";
@@ -103,7 +112,7 @@
 
     const stat = (key, label, n, sub) => {
       const b = el("button", { class: "stat", type: "button" }, el("b", null, fmtNum(n)), el("span", null, label), sub ? el("small", null, sub) : null);
-      b.onclick = () => { tab = key; renderList(); $("tabs").scrollIntoView({ behavior: "smooth", block: "start" }); };
+      b.onclick = () => { setTab(key); $("tabs").scrollIntoView({ behavior: "smooth", block: "start" }); };
       return b;
     };
     $("stats").replaceChildren(
@@ -174,7 +183,7 @@
     $("tabs").replaceChildren(...TABS.map(([key, label]) => {
       const b = el("button", { type: "button", role: "tab" }, `${label} `, el("b", null, fmtNum(view[key].length)));
       b.setAttribute("aria-selected", String(key === tab));
-      b.onclick = () => { tab = key; renderList(); };
+      b.onclick = () => setTab(key);
       return b;
     }));
     const full = view[tab];
@@ -189,16 +198,203 @@
     const q = $("filter").value.trim().toLowerCase();
     const shown = full.filter((a) => (!q || a.login.toLowerCase().includes(q)) && (!typeFilter.size || typeFilter.has(a.type)));
     const frag = document.createDocumentFragment();
+    const action = TAB_ACTION[tab];
+    const avatar = (a) => el("img", { src: `https://avatars.githubusercontent.com/u/${a.id}?v=4&s=64`, alt: "", loading: "lazy", width: 32, height: 32 });
     for (const a of shown) {
+      if (selecting) {
+        const why = eligibility(a, action);
+        const box = el("input", { type: "checkbox", checked: selected.has(a.id), disabled: Boolean(why) || Boolean(running) });
+        box.setAttribute("aria-label", `${action === "follow" ? "Follow back" : "Unfollow"} ${a.login}`);
+        box.onchange = () => toggle(a, box);
+        frag.append(el("label", { class: "acct" + (why ? " off" : ""), title: why || a.login },
+          box, avatar(a), el("span", { class: "login" }, a.login),
+          why ? el("span", { class: "why" }, why) : el("span", { class: `type ${String(a.type).toLowerCase()}` }, a.type)));
+        continue;
+      }
       frag.append(el("a", { class: "acct", href: `https://github.com/${a.login}`, target: "_blank", rel: "noopener",
         title: a.when ? `Unfollowed around ${fmtTime(a.when)}` : a.login },
-        el("img", { src: `https://avatars.githubusercontent.com/u/${a.id}?v=4&s=64`, alt: "", loading: "lazy", width: 32, height: 32 }),
+        avatar(a),
         el("span", { class: "login" }, a.login),
         el("span", { class: `type ${String(a.type).toLowerCase()}` }, a.type)));
     }
     $("list").replaceChildren(frag);
     $("emptyList").hidden = shown.length > 0;
     $("emptyList").textContent = tab === "unfollowers" && !full.length ? "No unfollows recorded yet." : "Nobody here.";
+    renderSelectControls(shown);
+  }
+
+  // ---------------------------------------------------------------- select, confirm, run
+
+  function followingIds() { return new Set(view.following.map((a) => a.id)); }
+  function followerIds() { return new Set(view.followers.map((a) => a.id)); }
+
+  /** Why an account can't be picked for this action, or "" if it can. */
+  function eligibility(a, action) {
+    if (action === "unfollow") return followingIds().has(a.id) ? "" : "you don't follow";
+    if (!followerIds().has(a.id)) return "doesn't follow you";
+    return followingIds().has(a.id) ? "already following" : "";
+  }
+
+  function setTab(key) {
+    if (running) return;
+    if (key !== tab) selected.clear();
+    tab = key;
+    renderList();
+  }
+
+  function toggle(a, box) {
+    const cap = LIMITS[TAB_ACTION[tab]].batch;
+    if (box.checked) {
+      if (selected.size >= cap) {
+        box.checked = false;
+        setStatus(`You can pick up to ${cap} at a time.`, true);
+        return;
+      }
+      selected.set(a.id, a);
+    } else selected.delete(a.id);
+    setStatus("");
+    renderSelectControls();
+  }
+
+  let lastShown = [];
+  function renderSelectControls(shown) {
+    if (shown) lastShown = shown;
+    const action = TAB_ACTION[tab];
+    const lim = LIMITS[action];
+    const any = view[tab].some((a) => !eligibility(a, action));
+    const btn = $("selectBtn");
+    btn.hidden = !any && !selecting;
+    btn.textContent = selecting ? "Done selecting" : action === "follow" ? "Select to follow back" : "Select to unfollow";
+    btn.setAttribute("aria-pressed", String(selecting));
+    btn.disabled = Boolean(running);
+    $("selectHint").hidden = !selecting;
+    $("selectHint").textContent = action === "follow"
+      ? `Pick people who follow you to follow back, up to ${lim.batch} at a time. Each gets a GitHub notification.`
+      : `Pick accounts to unfollow, up to ${lim.batch} at a time. GitHub doesn't tell them.`;
+    $("actionBar").hidden = !selecting || Boolean(running);
+    $("selCount").textContent = `${fmtNum(selected.size)} of ${lim.batch} selected`;
+    const act = $("actBtn");
+    act.disabled = !selected.size;
+    act.className = action === "unfollow" ? "unfollow" : "";
+    act.textContent = selected.size ? `${action === "follow" ? "Follow back" : "Unfollow"} ${fmtNum(selected.size)}` : action === "follow" ? "Follow back" : "Unfollow";
+    const room = lastShown.filter((a) => !selected.has(a.id) && !eligibility(a, action)).length;
+    $("selAllBtn").disabled = !room || selected.size >= lim.batch;
+    $("selAllBtn").textContent = room > lim.batch - selected.size ? `Select ${fmtNum(lim.batch - selected.size)} more shown` : "Select all shown";
+    $("selClearBtn").disabled = !selected.size;
+  }
+
+  $("selectBtn").onclick = () => {
+    selecting = !selecting;
+    if (!selecting) selected.clear();
+    renderList();
+  };
+  $("selClearBtn").onclick = () => { selected.clear(); renderList(); };
+  $("selAllBtn").onclick = () => {
+    const action = TAB_ACTION[tab], cap = LIMITS[action].batch;
+    for (const a of lastShown) {
+      if (selected.size >= cap) break;
+      if (!eligibility(a, action)) selected.set(a.id, a);
+    }
+    renderList();
+  };
+
+  $("actBtn").onclick = () => {
+    const action = TAB_ACTION[tab], lim = LIMITS[action];
+    const people = [...selected.values()];
+    if (!people.length) return;
+    const n = people.length;
+    $("confirmTitle").textContent = action === "follow" ? `Follow back ${plural(n, "person", "people")}?` : `Unfollow ${plural(n, "account", "accounts")}?`;
+    $("confirmText").textContent = action === "follow"
+      ? "ghfstats will follow these people on GitHub from your account. Each of them gets a notification that you followed them."
+      : "ghfstats will unfollow these accounts on GitHub from your account. GitHub doesn't notify them, and you can follow them again later.";
+    $("confirmList").replaceChildren(...people.map((a) => el("li", null, "@" + a.login)));
+    $("confirmPace").textContent = `They go one at a time, about ${lim.gapMs / 1000} seconds apart, so this takes about ${Math.max(1, Math.round((n * lim.gapMs) / 1000))} seconds. ` +
+      `To stay inside GitHub's rules, ghfstats allows ${lim.perHour} ${action === "follow" ? "follows" : "unfollows"} an hour and ${lim.perDay} a day.`;
+    $("confirmOk").textContent = action === "follow" ? `Follow back ${fmtNum(n)}` : `Unfollow ${fmtNum(n)}`;
+    $("confirmOk").className = action === "unfollow" ? "unfollow" : "";
+    const dlg = $("confirmDialog");
+    dlg.returnValue = "";
+    dlg.onclose = () => { if (dlg.returnValue === "ok") run(action, people); };
+    dlg.showModal();
+  };
+
+  $("runStop").onclick = () => { if (running) { running.stopped = true; $("runStop").disabled = true; $("runNow").textContent = "Stopping after this one…"; } };
+
+  /** Apply a successful follow or unfollow to the data on the page. */
+  function applyLocal(action, a) {
+    if (action === "unfollow") data.following = data.following.filter((c) => c[1] !== a.id);
+    else if (!data.following.some((c) => c[1] === a.id)) data.following.push([a.login, a.id, a.type]);
+    data.events.unshift({ kind: action === "follow" ? "you_followed" : "you_unfollowed", login: a.login, id: a.id, type: a.type, at: new Date().toISOString() });
+  }
+
+  async function run(action, people) {
+    const lim = LIMITS[action];
+    running = { stopped: false };
+    const verbing = action === "follow" ? "Following back" : "Unfollowing";
+    let done = 0, stopReason = "";
+    const errors = [];
+    $("runPanel").hidden = false;
+    $("runStop").disabled = false;
+    $("runErrors").replaceChildren();
+    $("runProgress").max = people.length;
+    $("runProgress").value = 0;
+    renderSelectControls();
+    const update = (now) => {
+      $("runTitle").textContent = `${verbing} ${fmtNum(Math.min(done + errors.length + 1, people.length))} of ${fmtNum(people.length)}`;
+      $("runProgress").value = done + errors.length;
+      if (now) $("runNow").textContent = now;
+    };
+
+    for (let i = 0; i < people.length; i++) {
+      if (running.stopped) { stopReason = "You stopped it."; break; }
+      const a = people[i];
+      update(`@${a.login}…`);
+      let r, retried = false;
+      for (;;) {
+        r = await call("/api/follow", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ action, login: a.login }) });
+        if (r.status === 429 && !r.body.limit && !retried && (r.body.retryAfter || 0) <= 60) {
+          retried = true;
+          const wait = Math.max(1, r.body.retryAfter || 1);
+          update(`GitHub asked to slow down. Waiting ${wait} seconds…`);
+          await sleep(wait * 1000);
+          continue;
+        }
+        break;
+      }
+      if (r.ok) {
+        done++;
+        selected.delete(a.id);
+        applyLocal(action, a);
+      } else if (r.status === 409 || r.status === 404) {
+        errors.push(`@${a.login}: ${r.body.error || "skipped"}`);
+        selected.delete(a.id);
+        $("runErrors").append(el("li", null, errors[errors.length - 1]));
+      } else {
+        if (r.body.needsPermission) {
+          showNotice(el("span", null, "To follow or unfollow from ghfstats, GitHub needs you to approve the Followers permission. ",
+            el("a", { href: "/api/auth/login" }, "Sign in again to approve it")), "warn");
+        } else if (r.status === 401) {
+          showNotice(el("span", null, (r.body.error || "Your GitHub sign-in expired.") + " ", el("a", { href: "/api/auth/login" }, "Sign in again")), "warn");
+        }
+        stopReason = r.body.error || `Stopped: GitHub returned an error (${r.status}).`;
+        break;
+      }
+      update();
+      if (i < people.length - 1 && !running.stopped) await sleep(lim.gapMs);
+    }
+
+    running = null;
+    $("runProgress").value = done + errors.length;
+    const did = action === "follow" ? `Followed back ${plural(done, "person", "people")}` : `Unfollowed ${plural(done, "account", "accounts")}`;
+    $("runTitle").textContent = done || !stopReason ? `${did}.` : "Nothing changed.";
+    const left = people.length - done - errors.length;
+    $("runNow").textContent = [stopReason,
+      left > 0 ? `${plural(left, "is", "are")} still selected.` : "",
+      errors.length ? `${plural(errors.length, "was", "were")} skipped:` : ""].filter(Boolean).join(" ");
+    $("runStop").disabled = true;
+    view = compute(data);
+    render();
   }
 
   const EV_LABEL = { unfollowed_you: "Unfollowed you", followed_you: "Followed you", you_unfollowed: "You unfollowed", you_followed: "You followed" };

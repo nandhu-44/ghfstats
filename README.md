@@ -36,6 +36,8 @@ On Vercel, people can also sign in with GitHub. Signing in adds:
 - A **follower graph** over time, and a list of the last 7 days of changes
 - **Follower insights**: your most-followed followers, likely follow-for-follow accounts, brand-new
   accounts, median follower count and combined reach (from GitHub's GraphQL API)
+- **Unfollow or follow back in batches**: pick accounts on the dashboard, confirm the list, and
+  ghfstats makes the changes one at a time (see below)
 
 Only the signed-in person's own account is tracked. GitHub tokens are encrypted before they're
 stored, and **Delete my data** on the dashboard removes everything and revokes ghfstats' access.
@@ -48,7 +50,9 @@ sign-in button stays hidden and nothing is stored on a server.
    - Callback URL: `https://<your-site>/api/auth/callback` (add `http://localhost:3000/api/auth/callback` for local use)
    - Tick "Request user authorization (OAuth) during installation" off; leave "Expire user authorization tokens" on.
    - Webhook: untick "Active".
-   - Permissions: none. Public follower data needs no permissions.
+   - Permissions: Account permissions → **Followers: Read and write**. Only needed for unfollowing and
+     following back from the dashboard; everything else reads public data. Without it, those buttons
+     tell the person that the permission is missing.
    - Generate a client secret.
 2. **Add a Postgres database.** In the Vercel project, Storage → Create Database → Neon (free plan), and
    connect it to the project. That sets `DATABASE_URL`. Any Postgres works; `POSTGRES_URL` is read too.
@@ -64,6 +68,26 @@ sign-in button stays hidden and nothing is stored on a server.
    | `DATABASE_URL` | Set by the Neon integration |
 
 4. **Redeploy.** The daily job runs at 02:30 UTC (Vercel Hobby runs crons once a day, at some point in that hour).
+
+If you add the Followers permission to an App people have already signed in to, GitHub doesn't apply
+it until each of them approves it. They're asked when they next sign in, and the dashboard links to
+sign-in when the permission is missing.
+
+### Unfollowing and following back
+
+GitHub's [Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies)
+ban "automated starring or following" and "automated excessive bulk activity", and its
+[rules on disruption](https://docs.github.com/en/site-policy/acceptable-use-policies/github-disrupting-the-experience-of-other-users)
+ban following accounts "in large volume in a short period of time". So ghfstats keeps these to
+deliberate, small batches:
+
+- Every action is a person the user ticked and confirmed. Nothing runs on a schedule.
+- Following is only offered for people who already follow you (follow back), never strangers.
+- Batches are at most 50 unfollows or 10 follows, sent one at a time about 1.5 or 3 seconds apart,
+  well under GitHub's [secondary rate limit](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
+  of 80 content-changing requests a minute.
+- The server allows each account 100 unfollows an hour and 300 a day, and 20 follows an hour and 50 a day
+  (`FOLLOW_LIMITS` in `lib/config.mjs`), and stops when GitHub asks it to slow down.
 
 Changing `AUTH_SECRET` signs everyone out and makes stored tokens unreadable, so people have to sign in again.
 
