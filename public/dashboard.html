@@ -24,11 +24,21 @@
     </div>
   </header>
 
-  <p id="status" role="status" aria-live="polite">Loading…</p>
+  <p id="status" role="status" aria-live="polite"><span class="visually-hidden">Loading your dashboard</span></p>
   <div id="notice" class="notice" hidden></div>
 
-  <section id="signedOut" hidden>
-    <p>Sign in with GitHub to see your dashboard.</p>
+  <div id="skeleton" aria-hidden="true">
+    <div class="skel-profile"><span class="skel circle"></span><span class="skel line" style="width:200px"></span></div>
+    <div class="stats">
+      <span class="skel skel-stat"></span><span class="skel skel-stat"></span><span class="skel skel-stat"></span>
+      <span class="skel skel-stat"></span><span class="skel skel-stat"></span><span class="skel skel-stat"></span>
+    </div>
+    <span class="skel skel-chart"></span>
+  </div>
+
+  <section id="signedOut" class="card locked-card" hidden>
+    <h2>Sign in to see your dashboard</h2>
+    <p>Your followers, who doesn't follow back and who unfollowed you, checked every day.</p>
     <a class="button gh" href="/api/auth/login">Continue with GitHub</a>
   </section>
 
@@ -39,9 +49,9 @@
 
     <div class="chart-card">
       <div class="legend">
-        <span><i style="background:var(--accent)"></i>Followers</span>
-        <span><i style="background:var(--good)"></i>Following</span>
-        <span><i style="background:var(--bot)"></i>Mutuals</span>
+        <span><i class="k-followers"></i>Followers</span>
+        <span><i class="k-following"></i>Following</span>
+        <span><i class="k-mutuals"></i>Mutuals</span>
       </div>
       <div id="chart"></div>
     </div>

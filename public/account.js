@@ -13,6 +13,7 @@
     failed: "GitHub sign-in didn't work. Try again in a moment.",
     unavailable: "Sign-in isn't set up on this site yet.",
     deleted: "Your data was deleted and ghfstats no longer has access to your GitHub account.",
+    busy: "Too many sign-in attempts from your network. Wait a few minutes and try again.",
   };
   const notice = MESSAGES[new URLSearchParams(location.search).get("signin")];
 
@@ -27,7 +28,7 @@
     if (!cfg || !cfg.signIn) {
       // No sign-in here: the lookup is the main path.
       $("lookupTitle").textContent = "Check any username";
-      $("lookupHint").textContent = "Without a token, GitHub allows 60 requests an hour, enough for about 3,000 followers plus following.";
+      $("lookupHint").textContent = "Runs in your browser. Without a token, GitHub allows 60 requests an hour, enough for about 3,000 followers plus following.";
       if (notice) { $("accountLink").hidden = true; $("perks").hidden = true; setNotice(notice); }
       else box.hidden = true;
       return;
@@ -40,8 +41,12 @@
       $("accountHint").textContent = `Signed in as @${cfg.login}. Your account is snapshotted every day.`;
       $("perks").hidden = true;
       $("topNav").hidden = false;
+      $("topNavLink").textContent = "Your dashboard";
+      $("topNavLink").href = "/dashboard";
       $("lookupTitle").textContent = "Check any username";
-      $("lookupHint").textContent = "Lookups use your GitHub sign-in, so you get 5,000 requests an hour. Nothing about them is stored.";
+      $("lookupHint").textContent = "Full lists for any account, using your GitHub sign-in. Nothing about other accounts is stored on the server.";
+    } else {
+      $("topNav").hidden = false;
     }
     if (notice) setNotice(notice);
   });

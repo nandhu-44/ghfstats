@@ -1,6 +1,7 @@
 // POST /api/sync: takes a snapshot now for the signed-in user.
 import { signInConfigured, syncCooldownSeconds } from "../lib/config.mjs";
 import { fail, handle, json, sameOrigin } from "../lib/http.mjs";
+import { rateLimit } from "../lib/ratelimit.mjs";
 import { currentUser } from "../lib/session.mjs";
 import { ReauthError, takeSnapshot } from "../lib/snapshot.mjs";
 import { getStore } from "../lib/store.mjs";
@@ -16,6 +17,8 @@ export const POST = handle(async (request) => {
   if (user.lastSnapshotAt && Date.now() - new Date(user.lastSnapshotAt).getTime() < cooldown) {
     return json({ ok: true, skipped: true, message: "Already up to date. Try again in a couple of minutes." });
   }
+  const limited = await rateLimit(store, "sync", user.id);
+  if (limited) return limited;
   try {
     const r = await takeSnapshot(store, user);
     return json({ ok: true, baseline: r.baseline, changes: r.events.length, counts: r.daily });

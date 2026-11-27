@@ -18,8 +18,9 @@
   <header class="topbar"><a class="brand" href="/"><img src="/icon.svg" alt="" width="32" height="32"><span>ghfstats</span></a></header>
   <h1 class="page-title">What ghfstats stores</h1>
   <h2>Without signing in</h2>
-  <p>Checking a username runs in your browser. Follower lists and snapshots are saved in your browser's local storage only.
-    An optional token stays in your browser and is sent only to GitHub.</p>
+  <p>A quick look at a username runs in your browser and asks GitHub directly. Nothing about it is sent to or stored by ghfstats.</p>
+  <p>To keep the service fair for everyone, the server counts sign-in attempts per network address for a few minutes.
+    The address is hashed before it's counted, so the address itself is never stored.</p>
 
   <h2>When you sign in with GitHub</h2>
   <p>ghfstats reads what is already public on your profile. It also asks GitHub for permission to change who you follow,

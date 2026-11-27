@@ -45,6 +45,19 @@
     $("status").className = isError ? "error" : "";
   }
 
+  /** Spinner and busy state on a button while its request runs. */
+  function busy(btn, on, label) {
+    if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+    btn.disabled = on;
+    btn.setAttribute("aria-busy", String(on));
+    btn.textContent = on ? label : btn.dataset.label;
+  }
+
+  function loadingStatus(msg) {
+    $("status").className = "";
+    $("status").replaceChildren(el("span", { class: "loading-line" }, el("span", { class: "spinner", "aria-hidden": "true" }), msg));
+  }
+
   function showNotice(msg, cls) {
     const n = $("notice");
     n.hidden = !msg;
@@ -344,7 +357,8 @@
     $("runProgress").value = 0;
     renderSelectControls();
     const update = (now) => {
-      $("runTitle").textContent = `${verbing} ${fmtNum(Math.min(done + errors.length + 1, people.length))} of ${fmtNum(people.length)}`;
+      $("runTitle").replaceChildren(el("span", { class: "spinner", "aria-hidden": "true" }),
+        `${verbing} ${fmtNum(Math.min(done + errors.length + 1, people.length))} of ${fmtNum(people.length)}`);
       $("runProgress").value = done + errors.length;
       if (now) $("runNow").textContent = now;
     };
@@ -446,15 +460,16 @@
     const r = await call("/api/me");
     if (r.status === 401) {
       setStatus("");
+      $("skeleton").hidden = true;
       $("signedOut").hidden = false;
       return;
     }
-    if (!r.ok) { setStatus(r.body.error || `Couldn't load your data (${r.status}).`, true); return; }
+    if (!r.ok) { $("skeleton").hidden = true; setStatus(r.body.error || `Couldn't load your data (${r.status}).`, true); return; }
     data = r.body;
     if (!data.user.lastSnapshotAt && !data.user.needsReauth) {
-      setStatus("Taking your first snapshot…");
+      loadingStatus("Taking your first snapshot…");
       const s = await call("/api/sync", { method: "POST" });
-      if (!s.ok) { if (!handleAuthError(s)) setStatus(s.body.error || "The first snapshot failed.", true); return; }
+      if (!s.ok) { $("skeleton").hidden = true; if (!handleAuthError(s)) setStatus(s.body.error || "The first snapshot failed.", true); return; }
       return load();
     }
     view = compute(data);
@@ -469,6 +484,7 @@
     } else if (data.user.lastError) {
       showNotice(`Last snapshot problem: ${data.user.lastError}`, "warn");
     } else showNotice(null);
+    $("skeleton").hidden = true;
     render();
     setStatus("");
   }
@@ -476,14 +492,14 @@
   $("filter").oninput = () => view && renderList();
 
   $("syncBtn").onclick = async () => {
-    $("syncBtn").disabled = true;
-    setStatus("Syncing with GitHub…");
+    busy($("syncBtn"), true, "Syncing");
+    loadingStatus("Syncing with GitHub…");
     try {
       const r = await call("/api/sync", { method: "POST" });
       if (!r.ok) { if (!handleAuthError(r)) setStatus(r.body.error || "Sync failed.", true); return; }
       await load();
       setStatus(r.body.skipped ? r.body.message : r.body.changes ? `Synced: ${r.body.changes} change${r.body.changes === 1 ? "" : "s"}.` : "Synced: no changes.");
-    } finally { $("syncBtn").disabled = false; }
+    } finally { busy($("syncBtn"), false); }
   };
 
   $("logoutBtn").onclick = async () => {
@@ -492,13 +508,18 @@
   };
 
   $("insightsBtn").onclick = async () => {
-    $("insightsBtn").disabled = true;
-    $("insightsStatus").textContent = "Looking up your followers on GitHub…";
+    busy($("insightsBtn"), true, "Loading insights");
+    $("insightsStatus").textContent = "Looking up your followers on GitHub. Big accounts take a few seconds.";
+    $("insights").replaceChildren(...[0, 1, 2].map(() => el("span", { class: "skel", "aria-hidden": "true" })));
     try {
       const r = await call("/api/insights");
-      if (!r.ok) { if (!handleAuthError(r)) $("insightsStatus").textContent = r.body.error || "Couldn't load insights."; return; }
+      if (!r.ok) {
+        $("insights").replaceChildren();
+        if (!handleAuthError(r)) $("insightsStatus").textContent = r.body.error || "Couldn't load insights.";
+        return;
+      }
       renderInsights(r.body);
-    } finally { $("insightsBtn").disabled = false; }
+    } finally { busy($("insightsBtn"), false); }
   };
 
   $("deleteBtn").onclick = async () => {
@@ -508,5 +529,5 @@
     location.href = "/?signin=deleted";
   };
 
-  load().catch((e) => setStatus(`Something went wrong: ${e.message}`, true));
+  load().catch((e) => { $("skeleton").hidden = true; setStatus(`Something went wrong: ${e.message}`, true); });
 })();

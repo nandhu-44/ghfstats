@@ -2,6 +2,7 @@
 import { signInConfigured } from "../lib/config.mjs";
 import { fail, handle, json } from "../lib/http.mjs";
 import { followerDetails, summarize } from "../lib/insights.mjs";
+import { rateLimit } from "../lib/ratelimit.mjs";
 import { currentUser } from "../lib/session.mjs";
 import { ReauthError, accessTokenFor } from "../lib/snapshot.mjs";
 import { getStore } from "../lib/store.mjs";
@@ -11,6 +12,8 @@ export const GET = handle(async (request) => {
   const store = await getStore();
   const user = await currentUser(request, store);
   if (!user) return fail(401, "You're not signed in.");
+  const limited = await rateLimit(store, "insights", user.id);
+  if (limited) return limited;
   try {
     const token = await accessTokenFor(store, user);
     const d = await followerDetails(user.login, token);

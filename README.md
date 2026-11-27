@@ -26,10 +26,12 @@ Sign in with GitHub and you also get:
 
 ## How it works
 
-**Without signing in**, the page calls the GitHub API straight from your browser. Snapshots are
-kept in that browser's localStorage, and unfollows are found by comparing each check with the last
-one, so the first check is only a baseline. GitHub allows 60 requests an hour without a token
-(about 3,000 accounts); paste a token with no permissions for more.
+**Without signing in**, you get a quick look at any account: the follower and following counts and
+a few accounts from each list, fetched from GitHub straight from your browser (three requests out of
+the 60 an hour GitHub allows each visitor). Full lists, who doesn't follow back, mutuals, unfollow
+tracking and history need "Continue with GitHub". On a copy of `public/` served without sign-in,
+the whole browser-only tool runs instead: full lists, snapshots in localStorage, and an optional
+token for more than 60 requests an hour.
 
 **With "Continue with GitHub"**, ghfstats uses a GitHub App. Signing in stores your account, your
 encrypted GitHub token and a first snapshot of your followers and following in Postgres. A daily
@@ -39,7 +41,16 @@ job adds a new snapshot and records what changed. Only your own account is track
 
 The data lives in six tables in the `public` schema, created on first use: `ghfs_user`,
 `ghfs_session`, `ghfs_edge` (who follows whom now), `ghfs_event` (follows and unfollows),
-`ghfs_daily` (counts per day) and `ghfs_action` (unfollows and follow-backs made from the dashboard).
+`ghfs_daily` (counts per day), `ghfs_action` (unfollows and follow-backs made from the dashboard)
+and `ghfs_rate` (request counts for the limits below; keys are hashed, so no IP addresses are kept).
+
+### Request limits
+
+So one visitor or script can't run up calls for everyone, the server counts requests
+(`RATE_LIMITS` in `lib/ratelimit.mjs`): starting or finishing sign-in, 20 per 10 minutes per IP;
+lookups of other accounts, 600 an hour per account; follower insights, 20 an hour; manual syncs,
+30 an hour on top of the two-minute cooldown. Over the limit, the API answers 429 with
+`Retry-After`. Set `GHFS_RATE_LIMITS=off` to turn them off, for example in local testing.
 
 ### Unfollowing and following back
 

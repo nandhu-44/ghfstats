@@ -3,6 +3,7 @@ import { githubClient, signInConfigured } from "../../lib/config.mjs";
 import { decrypt, safeEqual } from "../../lib/crypto.mjs";
 import { api, appInstallation, exchangeCode } from "../../lib/github.mjs";
 import { handle, parseCookies, redirect } from "../../lib/http.mjs";
+import { clientIp, rateLimit } from "../../lib/ratelimit.mjs";
 import { OAUTH_COOKIE, clearCookie, startSession } from "../../lib/session.mjs";
 import { sealTokens, takeSnapshot } from "../../lib/snapshot.mjs";
 import { getStore } from "../../lib/store.mjs";
@@ -21,6 +22,8 @@ export const GET = handle(async (request) => {
   const code = url.searchParams.get("code");
   if (!st || Date.now() - st.t > 600e3 || !safeEqual(st.s, state)) return fail("expired");
   if (!code) return fail("failed");
+  const store = await getStore();
+  if (await rateLimit(store, "callback", clientIp(request))) return fail("busy");
 
   let tokens, me;
   try {
@@ -33,7 +36,6 @@ export const GET = handle(async (request) => {
     return fail("failed");
   }
 
-  const store = await getStore();
   const user = await store.upsertUser({
     id: Number(me.id), login: me.login, name: me.name, avatarUrl: me.avatar_url, ...sealTokens(tokens),
   });

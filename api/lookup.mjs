@@ -4,6 +4,7 @@
 // token never reaches the browser. Only these three read-only, public endpoints are forwarded.
 import { githubApi, signInConfigured } from "../lib/config.mjs";
 import { fail, handle } from "../lib/http.mjs";
+import { rateLimit } from "../lib/ratelimit.mjs";
 import { currentUser } from "../lib/session.mjs";
 import { ReauthError, accessTokenFor } from "../lib/snapshot.mjs";
 import { getStore } from "../lib/store.mjs";
@@ -28,6 +29,8 @@ export const GET = handle(async (request) => {
   const store = await getStore();
   const user = await currentUser(request, store);
   if (!user) return fail(401, "You're not signed in.");
+  const limited = await rateLimit(store, "lookup", user.id);
+  if (limited) return limited;
   let token;
   try { token = await accessTokenFor(store, user); }
   catch (e) {

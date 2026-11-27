@@ -31,7 +31,7 @@
   <header class="topbar">
     <a class="brand" href="/"><img src="/icon.svg" alt="" width="32" height="32"><span>ghfstats</span></a>
     <nav class="toolbar" id="topNav" hidden>
-      <a class="button secondary small" id="topNavLink" href="/dashboard">Your dashboard</a>
+      <a class="button secondary small" id="topNavLink" href="/api/auth/login">Sign in</a>
     </nav>
   </header>
 
@@ -44,30 +44,31 @@
         <li><b>Daily snapshots</b> catch unfollows without you opening the page</li>
         <li><b>History and graphs</b> that follow you across devices</li>
         <li><b>Unfollow in batches</b> by picking accounts from your lists</li>
-        <li><b>5,000 lookups an hour</b> instead of GitHub's 60 without signing in</li>
+        <li><b>Full lists for any account</b>, not only the quick look below</li>
       </ul>
     </div>
   </section>
 
   <section class="card lookup-card" id="lookupCard">
-    <h2 id="lookupTitle">Or check any username</h2>
-    <p class="hint" id="lookupHint">No sign-in needed. Without signing in, GitHub allows 60 requests an hour,
-      enough for about 3,000 followers plus following.</p>
-    <form id="lookup" autocomplete="off">
-    <div class="row">
-      <input id="username" name="username" placeholder="GitHub username" required spellcheck="false" autocapitalize="off">
+    <h2 id="lookupTitle">Or take a quick look at any account</h2>
+    <p class="hint" id="lookupHint">Shows follower and following counts and a few accounts from each list, without signing in.</p>
+    <form id="lookup" class="addr" role="search" autocomplete="off">
+      <label>
+        <span class="addr-prefix" aria-hidden="true">github.com/</span>
+        <input id="username" name="username" placeholder="username" aria-label="GitHub username" required
+          spellcheck="false" autocapitalize="off" autocorrect="off" enterkeyhint="go">
+      </label>
       <button type="submit" id="go">Check</button>
-    </div>
-    <details id="tokenBox">
+    </form>
+    <details id="tokenBox" hidden>
       <summary>Use your own GitHub token instead</summary>
       <p class="hint">A fine-grained token with no permissions gives 5,000 requests an hour. It's sent only to
         api.github.com and stays in this browser.</p>
       <div class="row">
-        <input id="token" type="password" placeholder="ghp_... or github_pat_..." spellcheck="false">
+        <input id="token" type="password" placeholder="ghp_... or github_pat_..." spellcheck="false" aria-label="GitHub token">
         <label class="check"><input id="rememberToken" type="checkbox"> Remember on this device</label>
       </div>
     </details>
-  </form>
   </section>
 
   <p id="status" role="status" aria-live="polite"></p>
@@ -75,35 +76,56 @@
   <section id="results" hidden>
     <div class="profile" id="profile"></div>
     <div class="stats" id="stats"></div>
+    <div class="grid" id="skelGrid" hidden aria-hidden="true"></div>
 
-    <div id="changes" class="changes"></div>
-
-    <div class="tabs" id="tabs" role="tablist"></div>
-    <div class="filters">
-      <input id="filter" placeholder="Filter by username" spellcheck="false">
-      <div class="chips" id="typeChips"></div>
+    <div id="previewView" hidden>
+      <div class="preview-cols">
+        <section>
+          <h2 id="pvFollowersTitle">Followers</h2>
+          <div class="grid compact" id="pvFollowers"></div>
+        </section>
+        <section>
+          <h2 id="pvFollowingTitle">Following</h2>
+          <div class="grid compact" id="pvFollowing"></div>
+        </section>
+      </div>
+      <div class="card locked-card">
+        <h2>See who doesn't follow back</h2>
+        <p>Continue with GitHub for every follower, your mutuals, who doesn't follow back and who unfollowed you,
+          checked daily and kept across devices.</p>
+        <a class="button gh" href="/api/auth/login">Continue with GitHub</a>
+      </div>
     </div>
-    <div class="grid" id="list"></div>
-    <p class="empty" id="emptyList" hidden>Nobody here.</p>
 
-    <h2>Change history</h2>
-    <p class="hint">GitHub has no unfollow API, so ghfstats saves a snapshot in this browser each time you check and compares it with the last one.</p>
-    <div class="table-wrap"><table id="history"></table></div>
+    <div id="fullView" hidden>
+      <div id="changes" class="changes"></div>
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <div class="filters">
+        <input id="filter" type="search" placeholder="Filter by username" aria-label="Filter by username" spellcheck="false">
+        <div class="chips" id="typeChips"></div>
+      </div>
+      <div class="grid" id="list"></div>
+      <p class="empty" id="emptyList" hidden>Nobody here.</p>
+
+      <h2>Change history</h2>
+      <p class="hint">GitHub has no unfollow API, so ghfstats saves a snapshot in this browser each time you check and compares it with the last one.</p>
+      <div class="table-wrap"><table id="history"></table></div>
+    </div>
   </section>
 
-  <section class="data-tools">
+  <section class="data-tools" id="dataTools" hidden>
     <h2>Your saved data</h2>
-    <p class="hint">Snapshots live in this browser only. Export them to keep a backup or move to another device.</p>
+    <p class="hint" id="dataHint">Snapshots live in this browser only. Export them to keep a backup or move to another device.</p>
     <div class="row wrap">
       <button type="button" id="exportBtn" class="secondary">Export snapshots</button>
-      <label class="button secondary">Import snapshots<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+      <label class="button secondary" id="importLabel">Import snapshots<input type="file" id="importFile" accept="application/json,.json" hidden></label>
       <button type="button" id="clearBtn" class="danger">Clear saved data</button>
     </div>
     <p id="dataInfo" class="hint"></p>
   </section>
 
   <footer>
-    Checking a username runs entirely in your browser. Signing in stores your follower lists so they can be tracked daily;
+    A quick look runs in your browser and talks to GitHub directly. Signing in stores your follower lists so they can be tracked daily;
     see <a href="/privacy">what's stored</a>. Source on <a href="https://github.com/nandhu-44/ghfstats">GitHub</a>.
   </footer>
 </main>

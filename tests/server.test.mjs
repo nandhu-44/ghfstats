@@ -362,3 +362,29 @@ test("follow and unfollow: only picked people in your lists, follow-back only, l
   delete process.env.GITHUB_APP_SLUG;
   delete process.env.GHFS_FOLLOW_GAP_MS;
 });
+
+test("rate limits: sign-in per IP, and the limiter counts by hashed key", async () => {
+  enableSignIn();
+  const { RATE_LIMITS, rateLimit } = await import("../lib/ratelimit.mjs");
+  const ipA = { headers: { "x-real-ip": "203.0.113.7" }, redirect: "manual" };
+  const ipB = { headers: { "x-real-ip": "198.51.100.4" }, redirect: "manual" };
+  for (let i = 0; i < RATE_LIMITS.signin.limit; i++) {
+    const r = await fetch(base + "/api/auth/login", ipA);
+    assert.ok(r.headers.get("location").startsWith(process.env.GHFS_GITHUB_WEB), `sign-in ${i + 1} allowed`);
+  }
+  const blocked = await fetch(base + "/api/auth/login", ipA);
+  assert.strictEqual(blocked.headers.get("location"), "/?signin=busy");
+  const other = await fetch(base + "/api/auth/login", ipB);
+  assert.ok(other.headers.get("location").startsWith(process.env.GHFS_GITHUB_WEB), "another IP still gets in");
+
+  // The limiter itself: allowed up to the limit, then a 429 with Retry-After. Keys never hold the raw id.
+  const seen = [];
+  const fakeStore = { counts: new Map(), async hit(key, w) { seen.push(key); const n = (this.counts.get(key) || 0) + 1; this.counts.set(key, n); return { count: n, resetAt: new Date(Date.now() + w * 1000) }; } };
+  for (let i = 0; i < RATE_LIMITS.insights.limit; i++) assert.strictEqual(await rateLimit(fakeStore, "insights", 4242), null);
+  const res = await rateLimit(fakeStore, "insights", 4242);
+  assert.strictEqual(res.status, 429);
+  assert.ok(Number(res.headers.get("retry-after")) > 0);
+  assert.ok(seen.every((k) => !k.includes("4242")), "keys are hashed");
+  // A store that can't count never blocks.
+  assert.strictEqual(await rateLimit({ async hit() { throw new Error("down"); } }, "insights", 1), null);
+});

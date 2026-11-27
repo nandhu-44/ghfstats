@@ -159,6 +159,7 @@
     for (const k of kids) if (k != null) n.append(k);
     return n;
   };
+  const fmtNum = (n) => Number(n || 0).toLocaleString();
 
   function safeGet(storage, key) { try { return storage.getItem(key); } catch { return null; } }
   function safeSet(storage, key, val) { try { storage.setItem(key, val); return true; } catch { return false; } }
@@ -185,9 +186,10 @@
   }
 
   let store = loadStore();
-  let view = null; // {login, result, user, unfollowersAll}
+  let view = null; // {login, result, user, events, first}
   let tab = "notFollowingBack";
   const typeFilter = new Set();
+  const PREVIEW_SIZE = 12;
 
   class ApiError extends Error {}
 
@@ -196,6 +198,18 @@
     : fetch("/api/config", { credentials: "same-origin", headers: { accept: "application/json" } })
       .then((r) => (r.ok ? r.json() : null)).catch(() => null);
   root.ghfsConfig = config;
+
+  /**
+   * What a lookup does here:
+   * - "open": this deployment has no sign-in (static hosting), so the full browser-only tool runs.
+   * - "signed": signed in, so lookups go through /api/lookup with the person's own GitHub sign-in.
+   * - "quick": sign-in is offered but the visitor hasn't signed in: counts and a few accounts only.
+   *   Full lists, unfollow tracking and history need sign-in, which keeps anonymous use light.
+   */
+  function modeFor(cfg) {
+    if (!cfg || !cfg.signIn) return "open";
+    return cfg.signedIn ? "signed" : "quick";
+  }
 
   async function api(path, token, viaServer) {
     const headers = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
@@ -209,10 +223,15 @@
     const remaining = res.headers.get("x-ratelimit-remaining");
     if (remaining !== null) api.remaining = Number(remaining);
     if (res.ok) return res.json();
+    if (res.status === 429 && viaServer) {
+      let body = {};
+      try { body = await res.json(); } catch { /* empty */ }
+      if (body.retryAfter) throw new ApiError(body.error || "Too many lookups. Try again later.");
+    }
     if ((res.status === 403 || res.status === 429) && remaining === "0") {
       const reset = new Date(Number(res.headers.get("x-ratelimit-reset")) * 1000);
-      throw new ApiError(`GitHub's rate limit is used up until ${reset.toLocaleTimeString()}.` +
-        (token || viaServer ? "" : (signInOffered ? " Continue with GitHub to get 5,000 requests an hour." : " Add a token to get 5,000 requests an hour.")));
+      throw new ApiError(`GitHub's rate limit is used up until ${reset.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` +
+        (token || viaServer ? "" : (mode === "quick" ? " Continue with GitHub to get 5,000 requests an hour." : " Add a token to get 5,000 requests an hour.")));
     }
     if (res.status === 401 && viaServer) throw new ApiError("Your GitHub sign-in expired. Continue with GitHub again, then retry.");
     if (res.status === 401) throw new ApiError("GitHub rejected the token. Check it or remove it.");
@@ -231,8 +250,9 @@
   }
 
   function setStatus(msg, isError) {
-    $("status").textContent = msg;
-    $("status").className = isError ? "error" : "";
+    const s = $("status");
+    s.textContent = msg;
+    s.className = isError ? "error" : "";
   }
 
   function fmtTime(t) {
@@ -241,52 +261,122 @@
     return isNaN(d) ? t : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   }
 
-  function getToken() { return $("token").value.trim(); }
-  let signInOffered = false;
+  function getToken() { return mode === "open" ? $("token").value.trim() : ""; }
+  let mode = "open";
 
-  async function check(login) {
-    login = login.trim().replace(/^@/, "").replace(/^https?:\/\/github\.com\//i, "").replace(/\/.*$/, "");
+  function setBusy(on) {
+    const go = $("go");
+    go.disabled = on;
+    go.setAttribute("aria-busy", String(on));
+    go.textContent = on ? "Checking" : "Check";
+    $("results").setAttribute("aria-busy", String(on));
+  }
+
+  /** Placeholder shapes while GitHub answers, so the page doesn't jump when results land. */
+  function showSkeleton(stats) {
+    const line = (w) => { const s = el("span", { class: "skel line" }); s.style.width = w; return s; };
+    $("results").hidden = false;
+    $("previewView").hidden = true;
+    $("fullView").hidden = true;
+    const meta = el("div", null, line("180px"), el("div", { style: "height:8px" }), line("120px"));
+    meta.style.flex = "1";
+    $("profile").replaceChildren(el("div", { class: "skel-profile", "aria-hidden": "true" }, el("span", { class: "skel circle" }), meta));
+    $("stats").replaceChildren(...Array.from({ length: stats }, () => el("span", { class: "skel skel-stat", "aria-hidden": "true" })));
+    $("skelGrid").replaceChildren(...Array.from({ length: 12 }, () => el("span", { class: "skel skel-acct" })));
+    $("skelGrid").hidden = false;
+  }
+
+  function cleanLogin(raw) {
+    return raw.trim().replace(/^@/, "").replace(/^https?:\/\//i, "").replace(/^(www\.)?github\.com\//i, "").replace(/[/?#].*$/, "");
+  }
+
+  function rememberInUrl(login) {
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set("user", login);
+      history.replaceState(null, "", url);
+    } catch { /* e.g. opened from file:// */ }
+  }
+
+  async function check(raw) {
+    const login = cleanLogin(raw);
     if (!login) return;
+    $("username").value = login;
+    mode = modeFor(await config);
     const token = getToken();
-    if ($("rememberToken").checked && token) safeSet(localStorage, TOKEN_KEY, token);
-    else safeDel(localStorage, TOKEN_KEY);
+    if (mode === "open") {
+      if ($("rememberToken").checked && token) safeSet(localStorage, TOKEN_KEY, token);
+      else safeDel(localStorage, TOKEN_KEY);
+    }
 
-    $("go").disabled = true;
+    setBusy(true);
+    showSkeleton(mode === "quick" ? 5 : 6);
     setStatus(`Looking up ${login}…`);
     try {
-      const cfg = await config;
-      signInOffered = Boolean(cfg && cfg.signIn && !cfg.signedIn);
-      const viaServer = Boolean(!token && cfg && cfg.signedIn);
-      const user = await api(`/users/${encodeURIComponent(login)}`, token, viaServer);
-      const total = (user.followers || 0) + (user.following || 0);
-      let a = 0, b = 0;
-      const progress = () => setStatus(`Fetching ${a + b} of ${total} accounts…`);
-      const followers = await fetchAll(user.login, "followers", token, viaServer, n => { a = n; progress(); });
-      const following = await fetchAll(user.login, "following", token, viaServer, n => { b = n; progress(); });
-
-      const key = user.login.toLowerCase();
-      store.users[key] = store.users[key] || { login: user.login, snapshots: [], events: [], lastChecked: null };
-      const u = store.users[key];
-      u.login = user.login;
-      const snap = { t: new Date().toISOString(), followers, following };
-      const { result } = recordCheck(u, snap);
-      const stored = saveStore(store);
-
-      view = { login: user.login, user, result, events: u.events, first: !result.since };
-      try {
-        const url = new URL(location.href);
-        url.searchParams.set("user", user.login);
-        history.replaceState(null, "", url);
-      } catch { /* e.g. opened from file:// */ }
-      render();
-      const rl = api.remaining != null ? ` ${api.remaining} GitHub requests left this hour.` : "";
-      setStatus((stored ? `Checked ${fmtTime(snap.t)}.` : "Checked, but this browser couldn't save the snapshot.") + rl, !stored);
+      if (mode === "quick") await quickLook(login);
+      else await fullCheck(login, token);
     } catch (e) {
       setStatus(e instanceof ApiError ? e.message : `Something went wrong: ${e.message}`, true);
+      if (view) render(); else $("results").hidden = true;
     } finally {
-      $("go").disabled = false;
+      $("skelGrid").hidden = true;
+      setBusy(false);
       renderDataInfo();
     }
+  }
+
+  /** Signed out on a site with sign-in: profile, the two counts and a few accounts from each list. */
+  async function quickLook(login) {
+    const user = await api(`/users/${encodeURIComponent(login)}`);
+    const [followers, following] = await Promise.all([
+      user.followers ? api(`/users/${encodeURIComponent(user.login)}/followers?per_page=${PREVIEW_SIZE}`) : [],
+      user.following ? api(`/users/${encodeURIComponent(user.login)}/following?per_page=${PREVIEW_SIZE}`) : [],
+    ]);
+    view = null;
+    rememberInUrl(user.login);
+    renderProfile(user);
+
+    const count = (label, n) => el("div", { class: "stat" }, el("b", null, fmtNum(n)), el("span", null, label));
+    const locked = (label) => el("a", { class: "stat locked", href: "/api/auth/login" },
+      el("b", null, "Sign in to see"), el("span", null, label));
+    $("stats").replaceChildren(count("Followers", user.followers), count("Following", user.following),
+      locked("Not following back"), locked("Mutuals"), locked("Unfollowed you"));
+
+    const fill = (id, titleId, label, list, total) => {
+      $(titleId).replaceChildren(label, " ", el("small", null, total > list.length ? `${fmtNum(list.length)} of ${fmtNum(total)}` : ""));
+      $(id).replaceChildren(...(list.length ? list.map((a) => acctLink({ login: a.login, id: a.id, type: a.type || "User" }))
+        : [el("p", { class: "empty" }, "Nobody yet.")]));
+    };
+    fill("pvFollowers", "pvFollowersTitle", "Followers", followers, user.followers);
+    fill("pvFollowing", "pvFollowingTitle", "Following", following, user.following);
+    $("previewView").hidden = false;
+    $("fullView").hidden = true;
+    const rl = api.remaining != null ? ` ${fmtNum(api.remaining)} of GitHub's 60 requests an hour left for you.` : "";
+    setStatus(`Quick look at ${user.login}.${rl}`);
+  }
+
+  async function fullCheck(login, token) {
+    const viaServer = Boolean(!token && mode === "signed");
+    const user = await api(`/users/${encodeURIComponent(login)}`, token, viaServer);
+    const total = (user.followers || 0) + (user.following || 0);
+    let a = 0, b = 0;
+    const progress = () => setStatus(`Fetching ${fmtNum(a + b)} of ${fmtNum(total)} accounts…`);
+    const followers = await fetchAll(user.login, "followers", token, viaServer, n => { a = n; progress(); });
+    const following = await fetchAll(user.login, "following", token, viaServer, n => { b = n; progress(); });
+
+    const key = user.login.toLowerCase();
+    store.users[key] = store.users[key] || { login: user.login, snapshots: [], events: [], lastChecked: null };
+    const u = store.users[key];
+    u.login = user.login;
+    const snap = { t: new Date().toISOString(), followers, following };
+    const { result } = recordCheck(u, snap);
+    const stored = saveStore(store);
+
+    view = { login: user.login, user, result, events: u.events, first: !result.since };
+    rememberInUrl(user.login);
+    render();
+    const rl = api.remaining != null ? ` ${fmtNum(api.remaining)} GitHub requests left this hour.` : "";
+    setStatus((stored ? `Checked ${fmtTime(snap.t)}.` : "Checked, but this browser couldn't save the snapshot.") + rl, !stored);
   }
 
   const TABS = [
@@ -304,21 +394,35 @@
   }
 
   function typeLabel(c) {
-    return Object.entries(c).map(([k, v]) => `${v} ${k === "Organization" ? (v === 1 ? "org" : "orgs") : k === "Bot" ? (v === 1 ? "bot" : "bots") : (v === 1 ? "user" : "users")}`).join(", ");
+    return Object.entries(c).map(([k, v]) => `${fmtNum(v)} ${k === "Organization" ? (v === 1 ? "org" : "orgs") : k === "Bot" ? (v === 1 ? "bot" : "bots") : (v === 1 ? "user" : "users")}`).join(", ");
+  }
+
+  function renderProfile(user) {
+    const meta = [`@${user.login}`, user.type !== "User" ? user.type : null,
+      user.public_repos != null ? `${fmtNum(user.public_repos)} public repos` : null].filter(Boolean).join(", ");
+    $("profile").replaceChildren(
+      el("img", { src: user.avatar_url, alt: "", width: 56, height: 56 }),
+      el("div", null,
+        el("div", { class: "name" }, el("a", { href: user.html_url, target: "_blank", rel: "noopener" }, user.name || user.login)),
+        el("div", { class: "meta" }, meta)));
+  }
+
+  function acctLink(a) {
+    return el("a", { class: "acct", href: `https://github.com/${a.login}`, target: "_blank", rel: "noopener", title: a.when ? `Unfollowed around ${fmtTime(a.when)}` : a.login },
+      el("img", { src: avatar(a), alt: "", loading: "lazy", width: 32, height: 32 }),
+      el("span", { class: "login" }, a.login),
+      a.type && a.type !== "User" ? el("span", { class: `type ${a.type.toLowerCase()}` }, a.type) : null);
   }
 
   function render() {
-    const r = view.result, user = view.user;
+    const r = view.result;
     $("results").hidden = false;
-
-    $("profile").replaceChildren(
-      el("img", { src: user.avatar_url, alt: "" }),
-      el("div", null,
-        el("div", { class: "name" }, el("a", { href: user.html_url, target: "_blank", rel: "noopener" }, user.name || user.login)),
-        el("div", { class: "meta" }, `@${user.login} · ${user.type}${user.public_repos != null ? ` · ${user.public_repos} public repos` : ""}`)));
+    $("previewView").hidden = true;
+    $("fullView").hidden = false;
+    renderProfile(view.user);
 
     const stat = (key, label, n, sub) => {
-      const b = el("button", { class: "stat", type: "button" }, el("b", null, String(n)), el("span", null, label), sub ? el("small", null, sub) : null);
+      const b = el("button", { class: "stat", type: "button" }, el("b", null, fmtNum(n)), el("span", null, label), sub ? el("small", null, sub) : null);
       b.onclick = () => { tab = key; renderList(); $("tabs").scrollIntoView({ behavior: "smooth", block: "start" }); };
       return b;
     };
@@ -353,7 +457,7 @@
   function renderList() {
     if (!view) return;
     $("tabs").replaceChildren(...TABS.map(([key, label]) => {
-      const b = el("button", { type: "button", role: "tab" }, `${label} `, el("b", null, String(listFor(key).length)));
+      const b = el("button", { type: "button", role: "tab" }, `${label} `, el("b", null, fmtNum(listFor(key).length)));
       b.setAttribute("aria-selected", String(key === tab));
       b.onclick = () => { tab = key; renderList(); };
       return b;
@@ -363,7 +467,7 @@
     const counts = typeCounts(full);
     for (const t of [...typeFilter]) if (!counts[t]) typeFilter.delete(t);
     $("typeChips").replaceChildren(...Object.keys(counts).sort().map(t => {
-      const b = el("button", { type: "button" }, `${t} ${counts[t]}`);
+      const b = el("button", { type: "button" }, `${t} ${fmtNum(counts[t])}`);
       b.setAttribute("aria-pressed", String(typeFilter.has(t)));
       b.onclick = () => { typeFilter.has(t) ? typeFilter.delete(t) : typeFilter.add(t); renderList(); };
       return b;
@@ -372,12 +476,7 @@
     const q = $("filter").value.trim().toLowerCase();
     const shown = full.filter(a => (!q || a.login.toLowerCase().includes(q)) && (!typeFilter.size || typeFilter.has(a.type)));
     const frag = document.createDocumentFragment();
-    for (const a of shown) {
-      frag.append(el("a", { class: "acct", href: `https://github.com/${a.login}`, target: "_blank", rel: "noopener", title: a.when ? `Unfollowed around ${fmtTime(a.when)}` : a.login },
-        el("img", { src: avatar(a), alt: "", loading: "lazy", width: 32, height: 32 }),
-        el("span", { class: "login" }, a.login),
-        el("span", { class: `type ${a.type.toLowerCase()}` }, a.type)));
-    }
+    for (const a of shown) frag.append(acctLink(a));
     $("list").replaceChildren(frag);
     $("emptyList").hidden = shown.length > 0;
     $("emptyList").textContent = tab === "unfollowersAll" && !full.length
@@ -397,17 +496,21 @@
       : [el("tr", null, el("td", { colspan: 4, class: "empty" }, "No changes recorded yet."))]));
   }
 
+  /** Saved browser data: the full tool everywhere but a quick look, where only old data can be kept or cleared. */
   function renderDataInfo() {
     const users = Object.values(store.users);
+    const quick = mode === "quick";
+    $("dataTools").hidden = quick && !users.length;
+    $("importLabel").hidden = quick;
+    $("dataHint").textContent = quick
+      ? "Snapshots saved in this browser from earlier checks. Export them to keep a copy; signing in tracks you daily instead."
+      : "Snapshots live in this browser only. Export them to keep a backup or move to another device.";
     $("dataInfo").textContent = users.length
       ? `Saved: ${users.map(u => `${u.login} (${u.snapshots.length} snapshot${u.snapshots.length === 1 ? "" : "s"}, last checked ${fmtTime(u.lastChecked)})`).join("; ")}.`
       : "Nothing saved yet.";
   }
 
-  function init() {
-    const saved = safeGet(localStorage, TOKEN_KEY);
-    if (saved) { $("token").value = saved; $("rememberToken").checked = true; }
-
+  async function init() {
     $("lookup").onsubmit = (e) => { e.preventDefault(); check($("username").value); };
     $("filter").oninput = renderList;
     $("rememberToken").onchange = () => { if (!$("rememberToken").checked) safeDel(localStorage, TOKEN_KEY); };
@@ -440,11 +543,18 @@
       renderDataInfo();
     };
 
-    renderDataInfo();
     const qUser = new URLSearchParams(location.search).get("user");
+    if (qUser) $("username").value = qUser;
+    mode = modeFor(await config);
+    if (mode === "open") {
+      $("tokenBox").hidden = false;
+      const saved = safeGet(localStorage, TOKEN_KEY);
+      if (saved) { $("token").value = saved; $("rememberToken").checked = true; }
+    }
+    renderDataInfo();
     const lastUser = Object.values(store.users).sort((a, b) => (a.lastChecked < b.lastChecked ? 1 : -1))[0];
-    if (qUser) { $("username").value = qUser; check(qUser); }
-    else if (lastUser) $("username").value = lastUser.login;
+    if (qUser) check(qUser);
+    else if (lastUser && mode !== "quick") $("username").value = lastUser.login;
   }
 
   init();
