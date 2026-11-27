@@ -3,38 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ghfstats</title>
-  <meta name="description" content="See who follows you on GitHub, who doesn't follow back, and who unfollowed you.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+  <title>ghfstats: GitHub followers, mutuals and unfollowers</title>
+  <meta name="description" content="See who follows you on GitHub, who doesn't follow back, and who unfollowed you. Sign in with GitHub for daily tracking.">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ghfstats">
+  <meta property="og:title" content="ghfstats: GitHub followers, mutuals and unfollowers">
+  <meta property="og:description" content="See who follows you on GitHub, who doesn't follow back, and who unfollowed you.">
+  <meta property="og:url" content="https://ghfstats.vercel.app/">
+  <meta property="og:image" content="https://ghfstats.vercel.app/social-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="600">
+  <meta property="og:image:alt" content="ghfstats logo: rising bars and a person, with the tagline Followers, mutuals and unfollowers">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ghfstats: GitHub followers, mutuals and unfollowers">
+  <meta name="twitter:description" content="See who follows you on GitHub, who doesn't follow back, and who unfollowed you.">
+  <meta name="twitter:image" content="https://ghfstats.vercel.app/social-card.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
-  <header>
-    <h1>ghfstats</h1>
-    <p class="tagline">Who follows you on GitHub, who doesn't follow back, and who unfollowed you.</p>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="/icon.svg" alt="" width="32" height="32"><span>ghfstats</span></a>
+    <nav class="toolbar" id="topNav" hidden>
+      <a class="button secondary small" id="topNavLink" href="/dashboard">Your dashboard</a>
+    </nav>
   </header>
 
-  <section id="account" class="account" hidden>
-    <a class="button gh" id="accountLink" href="/api/auth/login">Continue with GitHub</a>
-    <span class="hint" id="accountHint">Sign in to track your own account every day: catch unfollows without visiting, see history graphs and richer follower details.</span>
+  <section class="hero">
+    <h1>Who follows you on GitHub, who doesn't follow back, and who unfollowed you.</h1>
+    <div id="account" class="hero-cta">
+      <a class="button gh big" id="accountLink" href="/api/auth/login">Continue with GitHub</a>
+      <p class="hint" id="accountHint">Free. Asks for no extra GitHub permissions.</p>
+      <ul class="perks" id="perks">
+        <li><b>Daily snapshots</b> catch unfollows without you opening the page</li>
+        <li><b>History and graphs</b> that follow you across devices</li>
+        <li><b>5,000 lookups an hour</b> instead of GitHub's 60 without signing in</li>
+      </ul>
+    </div>
   </section>
 
-  <form id="lookup" autocomplete="off">
+  <section class="card lookup-card" id="lookupCard">
+    <h2 id="lookupTitle">Or check any username</h2>
+    <p class="hint" id="lookupHint">No sign-in needed. Without signing in, GitHub allows 60 requests an hour,
+      enough for about 3,000 followers plus following.</p>
+    <form id="lookup" autocomplete="off">
     <div class="row">
       <input id="username" name="username" placeholder="GitHub username" required spellcheck="false" autocapitalize="off">
       <button type="submit" id="go">Check</button>
     </div>
     <details id="tokenBox">
-      <summary>GitHub token (optional, for bigger accounts)</summary>
-      <p class="hint">Without a token GitHub allows 60 requests an hour, enough for about 3,000 followers plus following.
-        A token with no scopes raises that to 5,000. It is sent only to api.github.com and stays in this browser.</p>
+      <summary>Use your own GitHub token instead</summary>
+      <p class="hint">A fine-grained token with no permissions gives 5,000 requests an hour. It's sent only to
+        api.github.com and stays in this browser.</p>
       <div class="row">
         <input id="token" type="password" placeholder="ghp_... or github_pat_..." spellcheck="false">
         <label class="check"><input id="rememberToken" type="checkbox"> Remember on this device</label>
       </div>
     </details>
   </form>
+  </section>
 
   <p id="status" role="status" aria-live="polite"></p>
 

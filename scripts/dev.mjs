@@ -11,7 +11,7 @@ const PUBLIC = join(ROOT, "public");
 const REWRITES = { "/": "/index.html", "/dashboard": "/dashboard.html", "/privacy": "/privacy.html" };
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+  ".json": "application/json", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
 };
 
 async function toRequest(req, origin) {

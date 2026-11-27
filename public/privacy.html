@@ -4,12 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>What's stored · ghfstats</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:image" content="https://ghfstats.vercel.app/social-card.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
-  <h1><a href="/" style="color:inherit;text-decoration:none">ghfstats</a></h1>
+  <header class="topbar"><a class="brand" href="/"><img src="/icon.svg" alt="" width="32" height="32"><span>ghfstats</span></a></header>
+  <h1 class="page-title">What ghfstats stores</h1>
   <h2>Without signing in</h2>
   <p>Checking a username runs in your browser. Follower lists and snapshots are saved in your browser's local storage only.
     An optional token stays in your browser and is sent only to GitHub.</p>
@@ -24,7 +31,8 @@
     <li>follow and unfollow events with dates, and a daily count of followers, following and mutuals</li>
   </ul>
   <p>Only your own account is tracked. Looking up someone else's username is never saved on the server.
-    Follower insights are fetched when you ask for them and are not stored.</p>
+    Follower insights are fetched when you ask for them and are not stored. When you look up a username while signed in,
+    the lookup uses your GitHub sign-in so you get a higher limit; it isn't stored either.</p>
   <p>Follows on GitHub are public, so there is no hidden follower data for ghfstats to show.
     Nothing is sold, shared or used for advertising.</p>
 

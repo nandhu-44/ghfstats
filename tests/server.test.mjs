@@ -189,6 +189,17 @@ test("full flow: sign in, baseline, changes, refresh, insights, cron, re-auth, s
   assert.strictEqual(ins.body.notable[0].login, "alice");
   assert.strictEqual(ins.body.total, 2);
 
+  // Signed-in lookups go through the server with the user's own token; only public user endpoints are allowed.
+  const look = await c.go("/api/lookup?path=" + encodeURIComponent("/users/octo/followers?per_page=1&page=2"));
+  assert.strictEqual(look.status, 200);
+  assert.deepStrictEqual((await look.json()).map((a) => a.login), ["erin"]);
+  assert.strictEqual((await c.getJson("/api/lookup?path=" + encodeURIComponent("/users/octo"))).body.login, "octo");
+  assert.strictEqual((await c.getJson("/api/lookup?path=" + encodeURIComponent("/users/nobody-here"))).status, 404);
+  for (const bad of ["/user", "/users/octo/repos", "/users/octo/../../user", "https://evil.example/users/octo", "/users/octo/followers?per_page=500"]) {
+    assert.strictEqual((await c.getJson("/api/lookup?path=" + encodeURIComponent(bad))).status, 400, bad);
+  }
+  assert.strictEqual((await client().getJson("/api/lookup?path=%2Fusers%2Focto")).status, 401);
+
   // Cron needs the secret, then snapshots everyone.
   assert.strictEqual((await c.getJson("/api/cron/snapshot")).status, 401);
   const cron = await c.getJson("/api/cron/snapshot", { headers: { authorization: "Bearer cron-secret-value" } });

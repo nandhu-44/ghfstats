@@ -5,13 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Your dashboard · ghfstats</title>
   <meta name="robots" content="noindex">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+  <meta property="og:image" content="https://ghfstats.vercel.app/social-card.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
   <header class="topbar">
-    <h1><a class="home" href="/">ghfstats</a></h1>
+    <a class="brand" href="/"><img src="/icon.svg" alt="" width="32" height="32"><span>ghfstats</span></a>
     <div class="toolbar" id="toolbar" hidden>
       <button type="button" id="syncBtn" class="secondary">Sync now</button>
       <button type="button" id="logoutBtn" class="secondary">Sign out</button>

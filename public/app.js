@@ -4,6 +4,8 @@
  * - Saves a snapshot in localStorage on each check and diffs it against the
  *   previous one to find unfollowers (GitHub has no unfollow API).
  * - Optional token is sent only to api.github.com and kept in this browser.
+ * - When signed in with GitHub (on Vercel), lookups go through /api/lookup with the
+ *   person's own GitHub sign-in: 5,000 requests an hour instead of 60.
  */
 (function (root) {
   "use strict";
@@ -189,29 +191,39 @@
 
   class ApiError extends Error {}
 
-  async function api(path, token) {
+  // Sign-in state from the server (absent on static hosting). account.js reuses this promise.
+  const config = location.protocol === "file:" ? Promise.resolve(null)
+    : fetch("/api/config", { credentials: "same-origin", headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  root.ghfsConfig = config;
+
+  async function api(path, token, viaServer) {
     const headers = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" };
     if (token) headers.Authorization = `Bearer ${token}`;
     let res;
-    try { res = await fetch(API + path, { headers }); }
-    catch { throw new ApiError("Couldn't reach GitHub. Check your connection and try again."); }
+    try {
+      res = viaServer
+        ? await fetch("/api/lookup?path=" + encodeURIComponent(path), { credentials: "same-origin", headers: { accept: "application/json" } })
+        : await fetch(API + path, { headers });
+    } catch { throw new ApiError("Couldn't reach GitHub. Check your connection and try again."); }
     const remaining = res.headers.get("x-ratelimit-remaining");
     if (remaining !== null) api.remaining = Number(remaining);
     if (res.ok) return res.json();
     if ((res.status === 403 || res.status === 429) && remaining === "0") {
       const reset = new Date(Number(res.headers.get("x-ratelimit-reset")) * 1000);
       throw new ApiError(`GitHub's rate limit is used up until ${reset.toLocaleTimeString()}.` +
-        (token ? "" : " Add a token to get 5,000 requests an hour."));
+        (token || viaServer ? "" : (signInOffered ? " Continue with GitHub to get 5,000 requests an hour." : " Add a token to get 5,000 requests an hour.")));
     }
+    if (res.status === 401 && viaServer) throw new ApiError("Your GitHub sign-in expired. Continue with GitHub again, then retry.");
     if (res.status === 401) throw new ApiError("GitHub rejected the token. Check it or remove it.");
     if (res.status === 404) throw new ApiError("No GitHub account with that username.");
     throw new ApiError(`GitHub returned an error (${res.status}). Try again in a moment.`);
   }
 
-  async function fetchAll(login, kind, token, onPage) {
+  async function fetchAll(login, kind, token, viaServer, onPage) {
     const out = [];
     for (let page = 1; ; page++) {
-      const batch = await api(`/users/${encodeURIComponent(login)}/${kind}?per_page=${PER_PAGE}&page=${page}`, token);
+      const batch = await api(`/users/${encodeURIComponent(login)}/${kind}?per_page=${PER_PAGE}&page=${page}`, token, viaServer);
       out.push(...batch.map(compact));
       onPage(out.length);
       if (batch.length < PER_PAGE) return out;
@@ -230,6 +242,7 @@
   }
 
   function getToken() { return $("token").value.trim(); }
+  let signInOffered = false;
 
   async function check(login) {
     login = login.trim().replace(/^@/, "").replace(/^https?:\/\/github\.com\//i, "").replace(/\/.*$/, "");
@@ -241,12 +254,15 @@
     $("go").disabled = true;
     setStatus(`Looking up ${login}…`);
     try {
-      const user = await api(`/users/${encodeURIComponent(login)}`, token);
+      const cfg = await config;
+      signInOffered = Boolean(cfg && cfg.signIn && !cfg.signedIn);
+      const viaServer = Boolean(!token && cfg && cfg.signedIn);
+      const user = await api(`/users/${encodeURIComponent(login)}`, token, viaServer);
       const total = (user.followers || 0) + (user.following || 0);
       let a = 0, b = 0;
       const progress = () => setStatus(`Fetching ${a + b} of ${total} accounts…`);
-      const followers = await fetchAll(user.login, "followers", token, n => { a = n; progress(); });
-      const following = await fetchAll(user.login, "following", token, n => { b = n; progress(); });
+      const followers = await fetchAll(user.login, "followers", token, viaServer, n => { a = n; progress(); });
+      const following = await fetchAll(user.login, "following", token, viaServer, n => { b = n; progress(); });
 
       const key = user.login.toLowerCase();
       store.users[key] = store.users[key] || { login: user.login, snapshots: [], events: [], lastChecked: null };

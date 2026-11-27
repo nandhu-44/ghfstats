@@ -89,6 +89,11 @@ export function createFakeGitHub({ clientId, clientSecret, accessTtl = 28800 }) 
     if (p === "/user") {
       return send(res, 200, { ...state.me, type: "User", followers: state.followers.length, following: state.following.length });
     }
+    const one = /^\/users\/([^/]+)$/.exec(p);
+    if (one) {
+      if (one[1].toLowerCase() !== state.me.login.toLowerCase()) return send(res, 404, { message: "Not Found" });
+      return send(res, 200, { ...state.me, type: "User", followers: state.followers.length, following: state.following.length });
+    }
     const m = /^\/users\/([^/]+)\/(followers|following)$/.exec(p);
     if (m) {
       if (m[1].toLowerCase() !== state.me.login.toLowerCase()) return send(res, 404, { message: "Not Found" });
